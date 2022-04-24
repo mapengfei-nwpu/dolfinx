@@ -351,7 +351,7 @@ common::stack_index_maps(
 //-----------------------------------------------------------------------------
 IndexMap::IndexMap(MPI_Comm comm, std::int32_t local_size)
     : _comm(comm), _comm_owner_to_ghost(MPI_COMM_NULL),
-      _comm_ghost_to_owner(MPI_COMM_NULL), _displs_recv_fwd(1, 0)
+      _comm_ghost_to_owner(MPI_COMM_NULL)
 {
   // Get global offset (index), using partial exclusive reduction
   std::int64_t offset = 0;
@@ -448,8 +448,9 @@ IndexMap::IndexMap(MPI_Comm comm, std::int32_t local_size,
   MPI_Comm_rank(comm, &myrank);
   assert(std::find(src_ranks.begin(), src_ranks.end(), myrank)
          == src_ranks.end());
-  std::vector<std::int32_t> ghost_owners(ghosts.size());
-  std::transform(src_ranks.cbegin(), src_ranks.cend(), ghost_owners.begin(),
+  _ghost_owner_neighbor_rank.resize(ghosts.size());
+  std::transform(src_ranks.cbegin(), src_ranks.cend(),
+                 _ghost_owner_neighbor_rank.begin(),
                  [&halo_src_ranks](auto src)
                  {
                    // Get rank of owner on the neighborhood communicator
@@ -460,59 +461,14 @@ IndexMap::IndexMap(MPI_Comm comm, std::int32_t local_size,
                    return std::distance(halo_src_ranks.cbegin(), it);
                  });
 
-  // Compute owned indices which are ghosted by other ranks, and how
-  // many of my indices each neighbor ghosts
-  auto [shared_ind, shared_disp] = compute_owned_shared(
-      _comm_ghost_to_owner.comm(), _ghosts, ghost_owners);
 
   // Wait for MPI_Iexscan to complete (get offset)
   MPI_Wait(&request_scan, MPI_STATUS_IGNORE);
   _local_range = {offset, offset + local_size};
 
-  // Convert owned global indices that are ghosts on another rank to
-  // local indexing
-  std::vector<std::int32_t> local_shared_ind(shared_ind.size());
-  std::transform(
-      shared_ind.cbegin(), shared_ind.cend(), local_shared_ind.begin(),
-      [offset](std::int64_t x) -> std::int32_t { return x - offset; });
-
-  _shared_indices = std::make_unique<graph::AdjacencyList<std::int32_t>>(
-      std::move(local_shared_ind), std::move(shared_disp));
 
   // Wait for the MPI_Iallreduce to complete
   MPI_Wait(&request, MPI_STATUS_IGNORE);
-
-  // --- Prepare send and receive size and displacement arrays for
-  // scatters. The data is for a forward (owner data -> ghosts)
-  // scatters. The reverse (ghosts -> owner) scatter use the transpose
-  // of these array.
-
-  // Get number of neighbors
-  int indegree(-1), outdegree(-2), weighted(-1);
-  MPI_Dist_graph_neighbors_count(_comm_owner_to_ghost.comm(), &indegree,
-                                 &outdegree, &weighted);
-
-  // Create displacement vectors fwd scatter
-  _sizes_recv_fwd.resize(indegree, 0);
-  std::for_each(ghost_owners.cbegin(), ghost_owners.cend(),
-                [&recv = _sizes_recv_fwd](auto owner) { recv[owner] += 1; });
-
-  _displs_recv_fwd.resize(indegree + 1, 0);
-  std::partial_sum(_sizes_recv_fwd.begin(), _sizes_recv_fwd.end(),
-                   _displs_recv_fwd.begin() + 1);
-
-  const std::vector<int32_t>& displs_send = _shared_indices->offsets();
-  _sizes_send_fwd.resize(outdegree, 0);
-  std::adjacent_difference(displs_send.begin() + 1, displs_send.end(),
-                           _sizes_send_fwd.begin());
-
-  // Build array that maps ghost indicies to a position in the recv
-  // (forward scatter) and send (reverse scatter) buffers
-  _ghost_pos_recv_fwd.resize(ghost_owners.size());
-  std::transform(ghost_owners.cbegin(), ghost_owners.cend(),
-                 _ghost_pos_recv_fwd.begin(),
-                 [displs = _displs_recv_fwd](auto owner) mutable
-                 { return displs[owner]++; });
 }
 //-----------------------------------------------------------------------------
 std::array<std::int64_t, 2> IndexMap::local_range() const noexcept
@@ -592,10 +548,28 @@ std::vector<std::int64_t> IndexMap::global_indices() const
   return global;
 }
 //-----------------------------------------------------------------------------
-const graph::AdjacencyList<std::int32_t>&
-IndexMap::scatter_fwd_indices() const noexcept
+const graph::AdjacencyList<std::int32_t>& IndexMap::scatter_fwd_indices() const noexcept
 {
-  assert(_shared_indices);
+  if (!_shared_indices)
+  {
+    // Compute owned indices which are ghosted by other ranks, and how
+    // many of my indices each neighbor ghosts
+    auto [shared_ind, shared_disp] = compute_owned_shared(
+        _comm_ghost_to_owner.comm(), _ghosts, _ghost_owner_neighbor_rank);
+
+    // Convert owned global indices that are ghosts on another rank to
+    // local indexing
+    std::vector<std::int32_t> local_shared_ind(shared_ind.size());
+    std::transform(shared_ind.cbegin(), shared_ind.cend(),
+                   local_shared_ind.begin(),
+                   [offset = _local_range[0]](std::int64_t x) -> std::int32_t
+                   { return x - offset; });
+
+    _shared_indices = std::make_unique<graph::AdjacencyList<std::int32_t>>(
+        std::move(local_shared_ind), std::move(shared_disp));
+
+    assert(_shared_indices);
+  }
   return *_shared_indices;
 }
 //-----------------------------------------------------------------------------
@@ -605,21 +579,9 @@ IndexMap::scatter_fwd_ghost_positions() const noexcept
   return _ghost_pos_recv_fwd;
 }
 //-----------------------------------------------------------------------------
-std::vector<int> IndexMap::ghost_owner_neighbor_rank() const
+const std::vector<int>& IndexMap::ghost_owner_neighbor_rank() const
 {
-  /// Compute the owner on the neighborhood communicator of ghost indices
-  std::vector<int> owners;
-  const std::vector<int>& displs_recv_fwd = _displs_recv_fwd;
-  std::transform(_ghost_pos_recv_fwd.cbegin(), _ghost_pos_recv_fwd.cend(),
-                 std::back_inserter(owners),
-                 [&displs_recv_fwd](auto ghost_pos)
-                 {
-                   auto it
-                       = std::upper_bound(displs_recv_fwd.cbegin(),
-                                          displs_recv_fwd.cend(), ghost_pos);
-                   return std::distance(displs_recv_fwd.cbegin(), it) - 1;
-                 });
-  return owners;
+  return _ghost_owner_neighbor_rank;
 }
 //----------------------------------------------------------------------------
 std::vector<int> IndexMap::ghost_owner_rank() const
@@ -775,197 +737,3 @@ std::map<std::int32_t, std::set<int>> IndexMap::compute_shared_indices() const
 
   return shared_indices;
 }
-//-----------------------------------------------------------------------------
-std::pair<IndexMap, std::vector<std::int32_t>>
-IndexMap::create_submap(const xtl::span<const std::int32_t>& indices) const
-{
-  if (!indices.empty() and indices.back() >= this->size_local())
-  {
-    throw std::runtime_error(
-        "Unowned index detected when creating sub-IndexMap");
-  }
-
-  MPI_Comm comm = this->comm(Direction::forward);
-
-  int myrank = 0;
-  MPI_Comm_rank(comm, &myrank);
-
-  // --- Step 1: Compute new offest for this rank and new global size
-
-  std::int64_t local_size = indices.size();
-  std::int64_t offset = 0;
-  MPI_Request request_offset;
-  MPI_Iexscan(&local_size, &offset, 1, MPI_INT64_T, MPI_SUM, comm,
-              &request_offset);
-
-  std::int64_t size_global = 0;
-  MPI_Request request_size;
-  MPI_Iallreduce(&local_size, &size_global, 1, MPI_INT64_T, MPI_SUM, comm,
-                 &request_size);
-
-  // --- Step 2: Create array from old to new index for owned indices,
-  // setting entries to -1 if they are not in the new map
-
-  std::vector<std::int32_t> old_to_new_index(this->size_local(), -1);
-  for (std::size_t i = 0; i < indices.size(); ++i)
-    old_to_new_index[indices[i]] = i;
-
-  // --- Step 3: Compute the destination that the new index map will
-  // send to (fwd scatter) and build the new shared_indices adjacency
-  // list
-
-  // Loop over ranks that ghost data in the original map
-  std::vector<int> ranks_old_to_new_send(_shared_indices->num_nodes(), -1);
-  std::vector<std::int32_t> shared_indices_data, shared_indices_off(1, 0);
-  for (std::int32_t r_old = 0; r_old < _shared_indices->num_nodes(); ++r_old)
-  {
-    // For indices sent to old rank r_old, add the new index
-    int num_indices = 0;
-    for (std::int32_t idx_old : _shared_indices->links(r_old))
-    {
-      if (auto idx = old_to_new_index[idx_old]; idx >= 0)
-      {
-        shared_indices_data.push_back(idx);
-        ++num_indices;
-      }
-    }
-
-    // If indices in the new map will be sent to r_old, update
-    // old-to-new map and update offset array
-    if (num_indices > 0)
-    {
-      ranks_old_to_new_send[r_old] = shared_indices_off.size() - 1;
-      shared_indices_off.push_back(shared_indices_off.back() + num_indices);
-    }
-  }
-
-  // Create new shared_indices adjacency list
-  shared_indices_data.shrink_to_fit();
-  shared_indices_off.shrink_to_fit();
-  auto shared_indices = std::make_unique<graph::AdjacencyList<std::int32_t>>(
-      std::move(shared_indices_data), std::move(shared_indices_off));
-
-  // --- Step 4: Create sizes_send_fwd array
-
-  MPI_Wait(&request_offset, MPI_STATUS_IGNORE);
-
-  // TODO: Can we avoid this step and pack the buffer directly?
-  // Build array of new global indices for indices in the new map
-  std::vector<std::int64_t> global_indices_new(this->size_local(), -1);
-  for (std::size_t i = 0; i < indices.size(); ++i)
-    global_indices_new[indices[i]] = i + offset;
-
-  // --- Step 5: Send new global indices to ranks that ghost indices on
-  // this rank
-
-  const std::vector<std::int32_t>& send_indices
-      = this->scatter_fwd_indices().array();
-  std::vector<std::int64_t> buffer_send_fwd(send_indices.size());
-  std::transform(
-      send_indices.cbegin(), send_indices.cend(), buffer_send_fwd.begin(),
-      [&global_indices_new](auto idx) { return global_indices_new[idx]; });
-
-  MPI_Request request1;
-  std::vector<std::int64_t> buffer_recv_fwd(this->num_ghosts());
-  MPI_Datatype data_type = MPI_INT64_T;
-  this->scatter_fwd_begin(xtl::span<const std::int64_t>(buffer_send_fwd),
-                          data_type, request1,
-                          xtl::span<std::int64_t>(buffer_recv_fwd));
-  this->scatter_fwd_end(request1);
-
-  // --- Step 6: Determine which ranks that send data to this rank for
-  // *this will also send data to the new map on this rank
-
-  // Count number of ghost from each rank
-  std::vector<std::int32_t> ranks_old_to_new_recv(_sizes_recv_fwd.size(), -1),
-      displs_recv_fwd(1, 0), sizes_recv_fwd_new(_sizes_recv_fwd.size(), 0);
-  for (std::size_t r_old = 0; r_old < _sizes_recv_fwd.size(); ++r_old)
-  {
-    // Count number of ghosts owned by rank r_old
-    assert(r_old + 1 < _displs_recv_fwd.size());
-    sizes_recv_fwd_new[r_old] = std::count_if(
-        std::next(buffer_recv_fwd.cbegin(), _displs_recv_fwd[r_old]),
-        std::next(buffer_recv_fwd.cbegin(), _displs_recv_fwd[r_old + 1]),
-        [](auto x) { return x >= 0; });
-
-    if (sizes_recv_fwd_new[r_old] > 0)
-    {
-      // Will receive data from r_old
-      ranks_old_to_new_recv[r_old] = displs_recv_fwd.size() - 1;
-      displs_recv_fwd.push_back(displs_recv_fwd.back()
-                                + sizes_recv_fwd_new[r_old]);
-    }
-  }
-
-  // --- Step 7: Build ghost_pos_recv_fwd for the new map
-
-  // Build list of ghosts in the new map, and compute the new owning rank
-  std::vector<std::int64_t> ghosts;
-  std::vector<std::int32_t> ghost_owner, new_to_old_ghost;
-  for (std::size_t i = 0; i < _ghosts.size(); ++i)
-  {
-    // Get new index for old _ghosts[i]
-    std::size_t buffer_pos = _ghost_pos_recv_fwd[i];
-    if (auto index = buffer_recv_fwd[buffer_pos]; index >= 0)
-    {
-      // If index is in the new map, add index and compute owning rank
-      // (rank index on new map)
-      ghosts.push_back(index);
-      new_to_old_ghost.push_back(i);
-      auto it = std::upper_bound(_displs_recv_fwd.cbegin(),
-                                 _displs_recv_fwd.cend(), buffer_pos);
-      const int r_old = std::distance(_displs_recv_fwd.cbegin(), it) - 1;
-      ghost_owner.push_back(ranks_old_to_new_recv[r_old]);
-    }
-  }
-
-  // Compute ghost_pos_recv_fwd
-  std::vector<std::int32_t> ghost_pos_recv_fwd(ghost_owner.size());
-  std::transform(ghost_owner.cbegin(), ghost_owner.cend(),
-                 ghost_pos_recv_fwd.begin(),
-                 [displs = displs_recv_fwd](auto owner) mutable
-                 { return displs[owner]++; });
-
-  // Step 8: Create neighbourhood communicators for the new map
-
-  // Get global src/dest from forward comm (owner-to-ghost) from
-  // original map
-  const auto [src_ranks, dest_ranks] = dolfinx::MPI::neighbors(comm);
-  std::vector<int> in_ranks, out_ranks;
-  for (std::size_t r = 0; r < ranks_old_to_new_recv.size(); ++r)
-    if (ranks_old_to_new_recv[r] >= 0)
-      in_ranks.push_back(src_ranks[r]);
-  for (std::size_t r = 0; r < ranks_old_to_new_send.size(); ++r)
-    if (ranks_old_to_new_send[r] >= 0)
-      out_ranks.push_back(dest_ranks[r]);
-
-  // NOTE: create uniform weights as a workaround to issue
-  // https://github.com/pmodels/mpich/issues/5764
-  std::vector<int> in_weights(in_ranks.size(), 1);
-  std::vector<int> out_weights(out_ranks.size(), 1);
-
-  MPI_Comm comm0, comm1;
-  MPI_Dist_graph_create_adjacent(comm, in_ranks.size(), in_ranks.data(),
-                                 in_weights.data(), out_ranks.size(),
-                                 out_ranks.data(), out_weights.data(),
-                                 MPI_INFO_NULL, false, &comm0);
-  MPI_Dist_graph_create_adjacent(comm, out_ranks.size(), out_ranks.data(),
-                                 out_weights.data(), in_ranks.size(),
-                                 in_ranks.data(), in_weights.data(),
-                                 MPI_INFO_NULL, false, &comm1);
-
-  // Wait for the MPI_Iallreduce to complete
-  MPI_Wait(&request_size, MPI_STATUS_IGNORE);
-
-  displs_recv_fwd.shrink_to_fit();
-  ghosts.shrink_to_fit();
-  new_to_old_ghost.shrink_to_fit();
-
-  return {IndexMap({offset, offset + local_size}, size_global, _comm.comm(),
-                   dolfinx::MPI::Comm(comm0, false),
-                   dolfinx::MPI::Comm(comm1, false), std::move(displs_recv_fwd),
-                   std::move(ghost_pos_recv_fwd), std::move(ghosts),
-                   std::move(shared_indices)),
-          std::move(new_to_old_ghost)};
-}
-//-----------------------------------------------------------------------------
