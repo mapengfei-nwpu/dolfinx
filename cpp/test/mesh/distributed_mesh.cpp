@@ -123,32 +123,32 @@ TEST_CASE("Distributed Mesh", "[distributed_mesh]")
 
   SECTION("SCOTCH")
   {
-    CHECK_NOTHROW(test_distributed_mesh(mesh::create_cell_partitioner()));
+    // CHECK_NOTHROW(test_distributed_mesh(mesh::create_cell_partitioner()));
   }
 
-#ifdef HAS_KAHIP
-  SECTION("KAHIP with Lambda")
-  {
-    auto partfn = graph::kahip::partitioner();
+// #ifdef HAS_KAHIP
+//   SECTION("KAHIP with Lambda")
+//   {
+//     auto partfn = graph::kahip::partitioner();
 
-    CellPartitionFunction kahip
-        = [&](MPI_Comm comm, int nparts, int tdim,
-              const graph::AdjacencyList<std::int64_t>& cells,
-              mesh::GhostMode ghost_mode)
-    {
-      LOG(INFO) << "Compute partition of cells across ranks (KaHIP).";
-      // Compute distributed dual graph (for the cells on this process)
-      const auto [dual_graph, num_ghost_edges]
-          = mesh::build_dual_graph(comm, cells, tdim);
+//     CellPartitionFunction kahip
+//         = [&](MPI_Comm comm, int nparts, int tdim,
+//               const graph::AdjacencyList<std::int64_t>& cells,
+//               mesh::GhostMode ghost_mode)
+//     {
+//       LOG(INFO) << "Compute partition of cells across ranks (KaHIP).";
+//       // Compute distributed dual graph (for the cells on this process)
+//       const auto [dual_graph, num_ghost_edges]
+//           = mesh::build_dual_graph(comm, cells, tdim);
 
-      // Just flag any kind of ghosting for now
-      bool ghosting = (ghost_mode != mesh::GhostMode::none);
+//       // Just flag any kind of ghosting for now
+//       bool ghosting = (ghost_mode != mesh::GhostMode::none);
 
-      // Compute partition
-      return partfn(comm, nparts, dual_graph, num_ghost_edges, ghosting);
-    };
+//       // Compute partition
+//       return partfn(comm, nparts, dual_graph, num_ghost_edges, ghosting);
+//     };
 
-    CHECK_NOTHROW(test_distributed_mesh(kahip));
-  }
-#endif
+//     CHECK_NOTHROW(test_distributed_mesh(kahip));
+//   }
+// #endif
 }
