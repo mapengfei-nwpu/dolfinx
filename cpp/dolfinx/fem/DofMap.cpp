@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/common/MPI.h>
+#include <dolfinx/common/Scatter.h>
 #include <dolfinx/common/sort.h>
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Topology.h>
@@ -88,11 +89,12 @@ fem::DofMap build_collapsed_dofmap(MPI_Comm comm, const DofMap& dofmap_view,
 
   // Send new global indices for owned dofs to non-owning process, and
   // receive new global indices from owner
+
   std::vector<std::int64_t> global_index_remote(
       dofmap_view.index_map->num_ghosts());
-  // dofmap_view.index_map->scatter_fwd(
-  //     xtl::span<const std::int64_t>(global_index),
-  //     xtl::span<std::int64_t>(global_index_remote), 1);
+  common::VectorScatter scatter(dofmap_view.index_map, 1);
+  scatter->scatter_fwd(xtl::span<const std::int64_t>(global_index),
+                       xtl::span<std::int64_t>(global_index_remote));
   const std::vector ghost_owner_old = dofmap_view.index_map->ghost_owner_rank();
 
   // Compute ghosts for collapsed dofmap
