@@ -17,10 +17,12 @@ using namespace dolfinx::common;
 //-----------------------------------------------------------------------------
 common::IndexMap common::create_old(const IndexMapNew& map)
 {
-  return common::IndexMap(
-      map.comm(), map.size_local(),
-      dolfinx::MPI::compute_graph_edges_nbx(map.comm(), map.ghost_owners()),
-      map.ghosts(), map.ghost_owners());
+  std::vector<int> dest(map.ghost_owners().begin(), map.ghost_owners().end());
+  std::sort(dest.begin(), dest.end());
+  dest.erase(std::unique(dest.begin(), dest.end()), dest.end());
+
+  return common::IndexMap(map.comm(), map.size_local(), dest, map.ghosts(),
+                          map.ghost_owners());
 }
 //-----------------------------------------------------------------------------
 // std::vector<std::int32_t> common::halo_owned_indices(const IndexMapNew&)

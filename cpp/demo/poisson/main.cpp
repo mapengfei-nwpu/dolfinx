@@ -124,6 +124,7 @@ int main(int argc, char* argv[])
         MPI_COMM_WORLD, {{{0.0, 0.0}, {2.0, 1.0}}}, {32, 16},
         mesh::CellType::triangle, mesh::GhostMode::shared_facet));
 
+    /*
     auto V = std::make_shared<fem::FunctionSpace>(
         fem::create_functionspace(functionspace_form_poisson_a, "u", mesh));
 
@@ -233,6 +234,7 @@ int main(int argc, char* argv[])
     // Save solution in VTK format
     io::VTKFile file(MPI_COMM_WORLD, "u.pvd", "w");
     file.write<T>({u}, 0.0);
+    */
   }
 
   PetscFinalize();
