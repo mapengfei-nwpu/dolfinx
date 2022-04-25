@@ -93,8 +93,8 @@ fem::DofMap build_collapsed_dofmap(MPI_Comm comm, const DofMap& dofmap_view,
   std::vector<std::int64_t> global_index_remote(
       dofmap_view.index_map->num_ghosts());
   common::VectorScatter scatter(dofmap_view.index_map, 1);
-  scatter->scatter_fwd(xtl::span<const std::int64_t>(global_index),
-                       xtl::span<std::int64_t>(global_index_remote));
+  scatter.scatter_fwd(xtl::span<const std::int64_t>(global_index),
+                      xtl::span<std::int64_t>(global_index_remote));
   const std::vector ghost_owner_old = dofmap_view.index_map->ghost_owner_rank();
 
   // Compute ghosts for collapsed dofmap
