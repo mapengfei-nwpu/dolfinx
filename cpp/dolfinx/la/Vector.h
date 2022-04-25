@@ -136,8 +136,7 @@ public:
   void scatter_fwd_begin()
   {
     assert(_scatter);
-    auto gather_fn = common::VectorScatter::gather();
-    gather_fn(_x, _scatter->shared_indices(), _buffer_send_fwd);
+    VectorScatter::gather()(_x, _scatter->shared_indices(), _buffer_send_fwd);
     _scatter->scatter_fwd_begin(xtl::span<const T>(_buffer_send_fwd), _request,
                                 xtl::span<T>(_buffer_recv_fwd));
   }
@@ -149,11 +148,10 @@ public:
     assert(_scatter);
     _scatter->scatter_fwd_end(_request);
 
-    auto gather_fn = common::VectorScatter::gather();
     const std::int32_t local_size = _bs * _map->size_local();
     xtl::span x_remote(_x.data() + local_size, _map->num_ghosts() * _bs);
-    gather_fn(xtl::span<const T>(_buffer_recv_fwd),
-              _scatter->scatter_fwd_ghost_positions(), x_remote);
+    VectorScatter::gather()(xtl::span<const T>(_buffer_recv_fwd),
+                            _scatter->scatter_fwd_ghost_positions(), x_remote);
   }
 
 private:
