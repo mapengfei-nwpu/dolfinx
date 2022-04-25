@@ -12,6 +12,7 @@
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/common/MPI.h>
 #include <dolfinx/common/Timer.h>
+#include <dolfinx/common/sort.h>
 #include <dolfinx/common/utils.h>
 #include <dolfinx/graph/AdjacencyList.h>
 #include <dolfinx/mesh/Topology.h>
@@ -595,8 +596,24 @@ fem::build_dofmap_data(
 
   // Build re-ordering map for data locality and get number of owned
   // nodes
-  const auto [old_to_new, num_owned]
+  auto [old_to_new, num_owned]
       = compute_reordering_map(node_graph0, dof_entity0, topology, reorder_fn);
+
+  // for (int i = 0; i < MPI::size(comm); i++)
+  // {
+  //   MPI_Barrier(comm);
+  //   if (i == MPI::rank(comm))
+  //   {
+  //     std::cout << "\nRank " << MPI::rank(comm) << std::endl;
+  //     std::cout << node_graph0.str();
+  //     for (auto e : local_to_global0)
+  //       std::cout << e << " ";
+  //     std::cout << std::endl;
+  //     for (auto e : old_to_new)
+  //       std::cout << e << " ";
+  //     std::cout << std::endl;
+  //   }
+  // }
 
   // Get global indices for unowned dofs
   const auto [local_to_global_unowned, local_to_global_owner]
@@ -604,14 +621,47 @@ fem::build_dofmap_data(
                            old_to_new, dof_entity0);
   assert(local_to_global_unowned.size() == local_to_global_owner.size());
 
+  // Reorder ghosts
+  std::vector<std::int32_t> perm(local_to_global_unowned.size());
+  std::iota(perm.begin(), perm.end(), 0);
+  argsort_radix<std::int64_t, 16>(local_to_global_unowned, perm);
+
+  std::vector<std::int64_t> ghosts(local_to_global_unowned.size());
+  std::vector<int> owners(local_to_global_unowned.size());
+  std::vector<std::int32_t> old_to_new_sorted(local_to_global_unowned.size());
+
+  for (std::size_t i = 0; i < perm.size(); i++)
+  {
+    ghosts[i] = local_to_global_unowned[perm[i]];
+    owners[i] = local_to_global_owner[perm[i]];
+    old_to_new_sorted[i] = old_to_new[num_owned + perm[i]];
+  }
+
+  std::swap_ranges(old_to_new.begin() + num_owned, old_to_new.end(),
+                   old_to_new_sorted.begin());
+
+  // for (int i = 0; i < MPI::size(comm); i++)
+  // {
+  //   MPI_Barrier(comm);
+  //   if (i == MPI::rank(comm))
+  //   {
+  //     std::cout << "\nRank " << MPI::rank(comm) << std::endl;
+  //     std::cout << num_owned << " " << old_to_new.size() << std::endl;
+  //     for (auto e : local_to_global_unowned)
+  //       std::cout << e << " ";
+  //     std::cout << std::endl;
+  //     for (auto e : perm)
+  //       std::cout << local_to_global_unowned[e] << " ";
+  //   }
+  // }
+
   // Create IndexMap for dofs range on this process
-  std::vector<int> src_ranks = local_to_global_owner;
+  std::vector<int> src_ranks = owners;
   std::sort(src_ranks.begin(), src_ranks.end());
   src_ranks.erase(std::unique(src_ranks.begin(), src_ranks.end()),
                   src_ranks.end());
   auto dest_ranks = dolfinx::MPI::compute_graph_edges_nbx(comm, src_ranks);
-  common::IndexMap index_map(comm, num_owned, dest_ranks,
-                             local_to_global_unowned, local_to_global_owner);
+  common::IndexMap index_map(comm, num_owned, dest_ranks, ghosts, owners);
 
   // Build re-ordered dofmap
   std::vector<std::int32_t> dofmap(node_graph0.array().size());
