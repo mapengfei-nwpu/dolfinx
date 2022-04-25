@@ -136,7 +136,8 @@ public:
   void scatter_fwd_begin()
   {
     assert(_scatter);
-    VectorScatter::gather()(_x, _scatter->shared_indices(), _buffer_send_fwd);
+    common::VectorScatter::gather()(_x, _scatter->shared_indices(),
+                                    _buffer_send_fwd);
     _scatter->scatter_fwd_begin(xtl::span<const T>(_buffer_send_fwd), _request,
                                 xtl::span<T>(_buffer_recv_fwd));
   }
@@ -150,8 +151,8 @@ public:
 
     const std::int32_t local_size = _bs * _map->size_local();
     xtl::span x_remote(_x.data() + local_size, _map->num_ghosts() * _bs);
-    VectorScatter::gather()(xtl::span<const T>(_buffer_recv_fwd),
-                            _scatter->scatter_fwd_ghost_positions(), x_remote);
+    _scatter->gather()(xtl::span<const T>(_buffer_recv_fwd),
+                       _scatter->scatter_fwd_ghost_positions(), x_remote);
   }
 
   /// Scatter local data to ghost positions on other ranks
@@ -160,6 +161,49 @@ public:
   {
     this->scatter_fwd_begin();
     this->scatter_fwd_end();
+  }
+
+  /// Start scatter of  ghost data to owner
+  /// @note Collective MPI operation
+  void scatter_rev_begin()
+  {
+    // Pack send buffer
+    const std::int32_t n = _bs * _map->size_local();
+    xtl::span<const T> xremote(_x.data() + n, _map->num_ghosts() * _bs);
+    auto insert = []([[maybe_unused]] auto& a, auto& b) { return b; };
+    _scatter->scatter()(xremote, _scatter->scatter_fwd_ghost_positions(),
+                        _buffer_recv_fwd, insert);
+    // _scatter->scatter_rev_begin(xtl::span<const T>(_buffer_recv_fwd),
+    // _request,
+    //                             xtl::span<T>(_buffer_send_fwd));
+  }
+
+  /// End scatter of ghost data to owner. This process may receive data
+  /// from more than one process, and the received data can be summed or
+  /// inserted into the local portion of the vector.
+  /// @param op The operation to perform when adding/setting received
+  /// values (add or insert)
+  /// @note Collective MPI operation
+  template <typename BinaryOp>
+  void scatter_rev_end(BinaryOp op)
+  {
+    // Complete scatter
+    _scatter->scatter_rev_end(_request);
+    auto idx = _scatter->shared_indices();
+    xtl::span<T> xlocal(_x.data(), _map->size_local() * _bs);
+    _scatter->scatter()(xtl::span<const T>(_buffer_send_fwd), idx, xlocal, op);
+  }
+
+  /// Scatter ghost data to owner. This process may receive data from
+  /// more than one process, and the received data can be summed or
+  /// inserted into the local portion of the vector.
+  /// @param op IndexMap operation (add or insert)
+  /// @note Collective MPI operation
+  template <typename BinaryOp>
+  void scatter_rev(BinaryOp op)
+  {
+    this->scatter_rev_begin();
+    this->scatter_rev_end(op);
   }
 
 private:

@@ -17,13 +17,6 @@ namespace dolfinx::common
 class VectorScatter
 {
 public:
-  /// Mode for reverse scatter operation
-  enum class Mode
-  {
-    insert,
-    add
-  };
-
   VectorScatter(const std::shared_ptr<const common::IndexMap> index_map, int bs)
       : _map(index_map), _bs(bs)
   {
@@ -235,15 +228,14 @@ public:
   /// the owning process. Size will be n * num_ghosts().
   /// @param[in] n Number of data items per index
   /// @param[in] op Sum or set received values in local_data
-  template <typename T, typename BinaryOp>
+  template <typename T, typename Functor1, typename Functor2, typename BinaryOp>
   void scatter_rev(xtl::span<T> local_data,
-                   const xtl::span<const T>& remote_data, int n,
-                   BinaryOp op) const
+                   const xtl::span<const T>& remote_data, Functor1 gather,
+                   Functor2 scatter, BinaryOp op) const
   {
     // Pack send buffer
     std::vector<T> buffer_send(_displs_recv_fwd.back());
-    auto gather_fn = VectorScatter::gather();
-    gather_fn(remote_data, _ghost_pos_inv, buffer_send);
+    gather(remote_data, _ghost_pos_inv, buffer_send);
 
     // Exchange data
     MPI_Request request;
@@ -254,9 +246,24 @@ public:
 
     // Copy or accumulate into "local_data"
     const std::vector<std::int32_t>& shared_indices = _shared_indices->array();
+    scatter(buffer_recv, shared_indices, local_data, op);
+  }
 
-    auto scatter_fn = VectorScatter::scatter();
-    scatter_fn(buffer_recv, shared_indices, local_data, op);
+  /// Send n values for each ghost index to owning to the process
+  ///
+  /// @param[in,out] local_data Local data associated with each owned
+  /// local index to be sent to process where the data is ghosted. Size
+  /// must be n * size_local().
+  /// @param[in] remote_data Ghost data on this process received from
+  /// the owning process. Size will be n * num_ghosts().
+  /// @param[in] n Number of data items per index
+  /// @param[in] op Sum or set received values in local_data
+  template <typename T, typename Functor1, typename Functor2, typename BinaryOp>
+  void scatter_rev(xtl::span<T> local_data,
+                   const xtl::span<const T>& remote_data, BinaryOp op) const
+  {
+    scatter_rev(local_data, remote_data, VectorScatter::gather(),
+                VectorScatter::scatter(), op);
   }
 
   const std::vector<std::int32_t>& shared_indices() const noexcept
