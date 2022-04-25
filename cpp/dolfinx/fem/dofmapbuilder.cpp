@@ -622,23 +622,24 @@ fem::build_dofmap_data(
   assert(local_to_global_unowned.size() == local_to_global_owner.size());
 
   // Reorder ghosts
-  std::vector<std::int32_t> perm(local_to_global_unowned.size());
+  std::size_t num_ghosts = local_to_global_unowned.size();
+  std::vector<std::int32_t> perm(num_ghosts);
+  std::vector<std::int64_t> ghosts(num_ghosts);
+  std::vector<int> owners(num_ghosts);
+  std::vector<std::int32_t> old_to_new_sorted(num_ghosts);
+
   std::iota(perm.begin(), perm.end(), 0);
   argsort_radix<std::int64_t, 16>(local_to_global_unowned, perm);
 
-  std::vector<std::int64_t> ghosts(local_to_global_unowned.size());
-  std::vector<int> owners(local_to_global_unowned.size());
-  std::vector<std::int32_t> old_to_new_sorted(local_to_global_unowned.size());
-
-  for (std::size_t i = 0; i < perm.size(); i++)
+  for (std::size_t i = 0; i < num_ghosts; i++)
   {
     ghosts[i] = local_to_global_unowned[perm[i]];
     owners[i] = local_to_global_owner[perm[i]];
     old_to_new_sorted[i] = old_to_new[num_owned + perm[i]];
   }
 
-  std::swap_ranges(old_to_new.begin() + num_owned, old_to_new.end(),
-                   old_to_new_sorted.begin());
+  std::copy(old_to_new_sorted.begin(), old_to_new_sorted.end(),
+            old_to_new.begin() + num_owned);
 
   // for (int i = 0; i < MPI::size(comm); i++)
   // {
