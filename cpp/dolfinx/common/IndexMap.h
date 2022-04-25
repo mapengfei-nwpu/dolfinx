@@ -1,4 +1,4 @@
-// Copyright (C) 2015-2019 Chris Richardson, Garth N. Wells and Igor Baratta
+// Copyright (C) 2015-2022 Chris Richardson, Garth N. Wells and Igor Baratta
 //
 // This file is part of DOLFINx (https://www.fenicsproject.org)
 //
@@ -96,8 +96,7 @@ private:
   template <typename U, typename V, typename W, typename X>
   IndexMap(std::array<std::int64_t, 2> local_range, std::size_t size_global,
            MPI_Comm comm, U&& comm_owner_to_ghost, U&& comm_ghost_to_owner,
-           V&& displs_recv_fwd, V&& ghost_pos_recv_fwd, W&& ghosts,
-           X&& shared_indices)
+           V&& ghost_pos_recv_fwd, W&& ghosts, X&& shared_indices)
       : _local_range(local_range), _size_global(size_global), _comm(comm),
         _comm_owner_to_ghost(std::forward<U>(comm_owner_to_ghost)),
         _comm_ghost_to_owner(std::forward<U>(comm_ghost_to_owner)),
