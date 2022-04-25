@@ -154,6 +154,14 @@ public:
                             _scatter->scatter_fwd_ghost_positions(), x_remote);
   }
 
+  /// Scatter local data to ghost positions on other ranks
+  /// @note Collective MPI operation
+  void scatter_fwd()
+  {
+    this->scatter_fwd_begin();
+    this->scatter_fwd_end();
+  }
+
 private:
   // Map describing the data layout
   std::shared_ptr<const common::IndexMap> _map;
