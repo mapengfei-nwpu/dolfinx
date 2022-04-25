@@ -4,6 +4,8 @@
 //
 // SPDX-License-Identifier:    LGPL-3.0-or-later
 
+#pragma once
+
 #include <dolfinx/common/IndexMap.h>
 #include <dolfinx/graph/AdjacencyList.h>
 #include <memory>
@@ -255,6 +257,17 @@ public:
 
     auto scatter_fn = VectorScatter::scatter();
     scatter_fn(buffer_recv, shared_indices, local_data, op);
+  }
+
+  const std::vector<std::int32_t>& shared_indices() const noexcept
+  {
+    assert(_shared_indices);
+    return _shared_indices->array();
+  }
+
+  const std::vector<std::int32_t>& scatter_fwd_ghost_positions() const noexcept
+  {
+    return _ghost_pos_recv_fwd;
   }
 
   static auto gather()

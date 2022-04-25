@@ -9,6 +9,7 @@
 #include "utils.h"
 #include <complex>
 #include <dolfinx/common/IndexMap.h>
+#include <dolfinx/common/Scatter.h>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -34,28 +35,25 @@ public:
   Vector(const std::shared_ptr<const common::IndexMap>& map, int bs,
          const Allocator& alloc = Allocator())
       : _map(map), _bs(bs),
-        _buffer_send_fwd(bs * map->scatter_fwd_indices().array().size()),
-        _buffer_recv_fwd(bs * map->num_ghosts()),
+        _buffer_send_fwd(bs * map->scatter_fwd_indices().array().size(), alloc),
+        _buffer_recv_fwd(bs * map->num_ghosts(), alloc),
         _x(bs * (map->size_local() + map->num_ghosts()), alloc)
   {
+    _scatter = std::make_shared<common::VectorScatter>(_map, _bs);
   }
 
   /// Copy constructor
   Vector(const Vector& x)
-      : _map(x._map), _bs(x._bs), _request(MPI_REQUEST_NULL),
-        _buffer_send_fwd(x._buffer_send_fwd),
+      : _map(x._map), _scatter(x._scatter), _bs(x._bs),
+        _request(MPI_REQUEST_NULL), _buffer_send_fwd(x._buffer_send_fwd),
         _buffer_recv_fwd(x._buffer_recv_fwd), _x(x._x)
   {
-    if (_bs == 1)
-      _datatype = dolfinx::MPI::mpi_type<T>();
-    else
-      MPI_Type_dup(x._datatype, &_datatype);
   }
 
   /// Move constructor
   Vector(Vector&& x)
-      : _map(std::move(x._map)), _bs(std::move(x._bs)),
-        _datatype(std::exchange(x._datatype, MPI_DATATYPE_NULL)),
+      : _map(std::move(x._map)), _scatter(std::move(x._scatter)),
+        _bs(std::move(x._bs)),
         _request(std::exchange(x._request, MPI_REQUEST_NULL)),
         _buffer_send_fwd(std::move(x._buffer_send_fwd)),
         _buffer_recv_fwd(std::move(x._buffer_recv_fwd)), _x(std::move(x._x))
@@ -63,11 +61,7 @@ public:
   }
 
   /// Destructor
-  ~Vector()
-  {
-    if (_datatype != MPI_DATATYPE_NULL and _bs != 1)
-      MPI_Type_free(&_datatype);
-  }
+  ~Vector() {}
 
   // Assignment operator (disabled)
   Vector& operator=(const Vector& x) = delete;
@@ -78,7 +72,6 @@ public:
   /// Set all entries (including ghosts)
   /// @param[in] v The value to set all entries to (on calling rank)
   void set(T v) { std::fill(_x.begin(), _x.end(), v); }
-
 
   /// Compute the norm of the vector
   /// @note Collective MPI operation
@@ -138,17 +131,43 @@ public:
   /// Get the allocator associated with the container
   constexpr allocator_type allocator() const { return _x.get_allocator(); }
 
+  /// Begin scatter of local data from owner to ghosts on other ranks
+  /// @note Collective MPI operation
+  void scatter_fwd_begin()
+  {
+    assert(_scatter);
+    auto gather_fn = common::VectorScatter::gather();
+    gather_fn(_x, _scatter->shared_indices(), _buffer_send_fwd);
+    _scatter->scatter_fwd_begin(xtl::span<const T>(_buffer_send_fwd), _request,
+                                xtl::span<T>(_buffer_recv_fwd));
+  }
+
+  /// End scatter of local data from owner to ghosts on other ranks
+  /// @note Collective MPI operation
+  void scatter_fwd_end()
+  {
+    assert(_scatter);
+    _scatter->scatter_fwd_end(_request);
+
+    auto gather_fn = common::VectorScatter::gather();
+    const std::int32_t local_size = _bs * _map->size_local();
+    xtl::span x_remote(_x.data() + local_size, _map->num_ghosts() * _bs);
+    gather_fn(xtl::span<const T>(_buffer_recv_fwd),
+              _scatter->scatter_fwd_ghost_positions(), x_remote);
+  }
+
 private:
   // Map describing the data layout
   std::shared_ptr<const common::IndexMap> _map;
+
+  std::shared_ptr<common::VectorScatter> _scatter;
 
   // Block size
   int _bs;
 
   // Data type and buffers for ghost scatters
-  MPI_Datatype _datatype = MPI_DATATYPE_NULL;
   MPI_Request _request = MPI_REQUEST_NULL;
-  std::vector<T> _buffer_send_fwd, _buffer_recv_fwd;
+  std::vector<T, Allocator> _buffer_send_fwd, _buffer_recv_fwd;
 
   // Data
   std::vector<T, Allocator> _x;

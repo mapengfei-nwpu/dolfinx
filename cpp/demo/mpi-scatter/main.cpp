@@ -59,14 +59,16 @@ int main(int argc, char* argv[])
     auto map = V->dofmap()->index_map;
     int bs = V->dofmap()->index_map_bs();
 
-    common::VectorScatter scatter(map, bs);
+    la::Vector<double> vec(map, bs);
 
-    int n = map->size_local() * bs;
-    xtl::span<const double> local_data(vector.data(), n);
-    std::fill_n(vector.begin(), n, rank);
-    xtl::span<double> remote_data(vector.data() + n, map->num_ghosts() * bs);
+    vec.set(rank);
 
-    scatter.scatter_fwd(local_data, remote_data);
+    vec.scatter_fwd_begin();
+    vec.scatter_fwd_end();
+    std::int32_t n = map->size_local() * bs;
+    xtl::span<const double> remote_data(vec.array().data() + n,
+                                        map->num_ghosts() * bs);
+
   }
 
   MPI_Finalize();
