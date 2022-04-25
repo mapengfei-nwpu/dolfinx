@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <dolfinx/common/IndexMap.h>
+#include <dolfinx/common/IndexMapNew.h>
 #include <dolfinx/common/MPI.h>
 #include <dolfinx/common/Timer.h>
 #include <dolfinx/common/utils.h>
@@ -432,8 +433,9 @@ std::pair<std::vector<std::int64_t>, std::vector<int>> get_global_indices(
     if (map)
     {
       shared_entity[d] = std::vector<std::int8_t>(map->size_local(), false);
+      common::IndexMap map_old = common::create_old(*map);
       const std::vector<std::int32_t>& forward_indices
-          = map->scatter_fwd_indices().array();
+          = map_old.scatter_fwd_indices().array();
       for (auto entity : forward_indices)
         shared_entity[d][entity] = true;
     }
@@ -469,7 +471,12 @@ std::pair<std::vector<std::int64_t>, std::vector<int>> get_global_indices(
     auto map = topology.index_map(d);
     if (map)
     {
-      comm[d] = map->comm(common::IndexMap::Direction::forward);
+      common::IndexMap map_old(map->comm(), map->size_local(),
+                               dolfinx::MPI::compute_graph_edges_nbx(
+                                   map->comm(), map->ghost_owners()),
+                               map->ghosts(), map->ghost_owners());
+
+      comm[d] = map_old.comm(common::IndexMap::Direction::forward);
 
       // Get number of neighbors
       int indegree(-1), outdegree(-2), weighted(-1);

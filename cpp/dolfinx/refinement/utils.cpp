@@ -5,6 +5,7 @@
 // SPDX-License-Identifier:    LGPL-3.0-or-later
 
 #include "utils.h"
+#include <dolfinx/common/IndexMapNew.h>
 #include <dolfinx/common/MPI.h>
 #include <dolfinx/fem/ElementDofLayout.h>
 #include <dolfinx/mesh/Geometry.h>
@@ -26,7 +27,7 @@ using namespace xt::placeholders;
 namespace
 {
 std::int64_t local_to_global(std::int32_t local_index,
-                             const common::IndexMap& map)
+                             const common::IndexMapNew& map)
 {
   assert(local_index >= 0);
   const std::array local_range = map.local_range();
@@ -134,7 +135,7 @@ refinement::compute_edge_sharing(const mesh::Mesh& mesh)
   // Create shared edges, for both owned and ghost indices
   // returning edge -> set(global process numbers)
   std::map<std::int32_t, std::set<int>> shared_edges_by_proc
-      = map_e->compute_shared_indices();
+      = common::create_old(*map_e).compute_shared_indices();
 
   // Compute a slightly wider neighborhood for direct communication of shared
   // edges
@@ -172,7 +173,7 @@ refinement::compute_edge_sharing(const mesh::Mesh& mesh)
 void refinement::update_logical_edgefunction(
     MPI_Comm neighbor_comm,
     const std::vector<std::vector<std::int32_t>>& marked_for_update,
-    std::vector<std::int8_t>& marked_edges, const common::IndexMap& map_e)
+    std::vector<std::int8_t>& marked_edges, const common::IndexMapNew& map_e)
 {
   std::vector<std::int32_t> send_offsets = {0};
   std::vector<std::int64_t> data_to_send;
@@ -210,7 +211,7 @@ refinement::create_new_vertices(
     const mesh::Mesh& mesh, const std::vector<std::int8_t>& marked_edges)
 {
   // Take marked_edges and use to create new vertices
-  const std::shared_ptr<const common::IndexMap> edge_index_map
+  const std::shared_ptr<const common::IndexMapNew> edge_index_map
       = mesh.topology().index_map(1);
 
   // Add new edge midpoints to list of vertices
@@ -369,7 +370,7 @@ refinement::partition(const mesh::Mesh& old_mesh,
 }
 //-----------------------------------------------------------------------------
 std::vector<std::int64_t>
-refinement::adjust_indices(const common::IndexMap& index_map, std::int32_t n)
+refinement::adjust_indices(const common::IndexMapNew& index_map, std::int32_t n)
 {
   // Add in an extra "n" indices at the end of the current local_range
   // of "index_map", and adjust existing indices to match.
@@ -380,10 +381,12 @@ refinement::adjust_indices(const common::IndexMap& index_map, std::int32_t n)
   std::int64_t global_offset = 0;
   MPI_Exscan(&num_local, &global_offset, 1, MPI_INT64_T, MPI_SUM, comm);
 
+  common::IndexMap index_map_old = common::create_old(index_map);
+
   // Use MPI neighbors to get offsets for ghosts. Use the source of the
   // forward comm to get ghost entry neighbors and create a dictionary
   // to lookup from the global rank
-  MPI_Comm comm_fwd = index_map.comm(common::IndexMap::Direction::forward);
+  MPI_Comm comm_fwd = index_map_old.comm(common::IndexMap::Direction::forward);
   int num_neighbors_fwd, num_neighbors_rev, weighted;
   MPI_Dist_graph_neighbors_count(comm_fwd, &num_neighbors_fwd,
                                  &num_neighbors_rev, &weighted);

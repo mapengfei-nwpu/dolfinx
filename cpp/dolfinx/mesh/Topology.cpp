@@ -11,6 +11,7 @@
 #include "utils.h"
 #include <algorithm>
 #include <dolfinx/common/IndexMap.h>
+#include <dolfinx/common/IndexMapNew.h>
 #include <dolfinx/common/log.h>
 #include <dolfinx/common/sort.h>
 #include <dolfinx/common/utils.h>
@@ -702,13 +703,13 @@ graph::AdjacencyList<std::int32_t> convert_to_local_indexing(
 std::vector<std::int8_t> mesh::compute_boundary_facets(const Topology& topology)
 {
   const int tdim = topology.dim();
-  auto facet_imap = topology.index_map(tdim - 1);
-  if (!facet_imap)
+  auto facet_map = topology.index_map(tdim - 1);
+  if (!facet_map)
     throw std::runtime_error("Facets have not been computed.");
 
-  auto cell_imap = topology.index_map(tdim);
+  auto cell_map = topology.index_map(tdim);
   // Should always have cell index map
-  assert(cell_imap);
+  assert(cell_map);
 
   // In parallel, a mesh has either:
   // i) Ghost cells connected to every shared facet
@@ -723,13 +724,14 @@ std::vector<std::int8_t> mesh::compute_boundary_facets(const Topology& topology)
   // submesh could have no ghost cells and no shared facets, but could share
   // some cells with other processes.
   std::vector<std::int32_t> fwd_shared_facets;
-  if (cell_imap->num_ghosts() == 0
-      and cell_imap->scatter_fwd_indices().array().empty())
+  if (cell_map->num_ghosts() == 0
+      and common::create_old(*cell_map).scatter_fwd_indices().array().empty())
   {
+    auto facet_map_old = common::create_old(*facet_map);
+
     const std::vector<std::int32_t>& fwd_indices
-        = facet_imap->scatter_fwd_indices().array();
-    fwd_shared_facets.assign(fwd_indices.begin(),
-                             fwd_indices.end());
+        = facet_map_old.scatter_fwd_indices().array();
+    fwd_shared_facets.assign(fwd_indices.begin(), fwd_indices.end());
     dolfinx::radix_sort(xtl::span(fwd_shared_facets));
     fwd_shared_facets.erase(
         std::unique(fwd_shared_facets.begin(), fwd_shared_facets.end()),
@@ -739,7 +741,7 @@ std::vector<std::int8_t> mesh::compute_boundary_facets(const Topology& topology)
   auto f_to_c = topology.connectivity(tdim - 1, tdim);
   if (!f_to_c)
     throw std::runtime_error("Facet-cell connectivity missing.");
-  std::vector<std::int8_t> facet_markers(facet_imap->size_local(), false);
+  std::vector<std::int8_t> facet_markers(facet_map->size_local(), false);
   for (std::size_t f = 0; f < facet_markers.size(); ++f)
   {
     if (f_to_c->num_links(f) == 1
@@ -765,14 +767,14 @@ Topology::Topology(MPI_Comm comm, CellType type)
 //-----------------------------------------------------------------------------
 int Topology::dim() const noexcept { return _connectivity.size() - 1; }
 //-----------------------------------------------------------------------------
-void Topology::set_index_map(int dim,
-                             const std::shared_ptr<const common::IndexMap>& map)
+void Topology::set_index_map(
+    int dim, const std::shared_ptr<const common::IndexMapNew>& map)
 {
   assert(dim < (int)_index_map.size());
   _index_map[dim] = map;
 }
 //-----------------------------------------------------------------------------
-std::shared_ptr<const common::IndexMap> Topology::index_map(int dim) const
+std::shared_ptr<const common::IndexMapNew> Topology::index_map(int dim) const
 {
   assert(dim < (int)_index_map.size());
   return _index_map[dim];
@@ -988,9 +990,9 @@ mesh::create_topology(MPI_Comm comm,
 
   // Create an index map for cells. We do it here because we can find
   // src ranks for the cell index map using comm0.
-  std::shared_ptr<common::IndexMap> index_map_c;
+  std::shared_ptr<common::IndexMapNew> index_map_c;
   if (ghost_mode == GhostMode::none)
-    index_map_c = std::make_shared<common::IndexMap>(comm, num_local_cells);
+    index_map_c = std::make_shared<common::IndexMapNew>(comm, num_local_cells);
   else
   {
     // Get global indices of ghost cells
@@ -1021,8 +1023,8 @@ mesh::create_topology(MPI_Comm comm,
     std::vector<int> dest = find_out_edges(comm0, ranks, src);
     MPI_Comm_free(&comm0);
 
-    index_map_c = std::make_shared<common::IndexMap>(
-        comm, num_local_cells, dest, cell_ghost_indices, ghost_owners);
+    index_map_c = std::make_shared<common::IndexMapNew>(
+        comm, num_local_cells, cell_ghost_indices, ghost_owners);
   }
 
   // Send and receive  ((input vertex index) -> (new global index, owner
@@ -1083,9 +1085,10 @@ mesh::create_topology(MPI_Comm comm,
       // (who we get the vertex index from) is not necessarily the
       // vertex owner.
       const std::vector<std::array<std::int64_t, 3>> recv_data
-          = exchange_ghost_indexing(*index_map_c, cells, owned_vertices.size(),
-                                    global_offset_v, global_to_local_vertices,
-                                    ghost_vertices, ghost_vertex_owners);
+          = exchange_ghost_indexing(common::create_old(*index_map_c), cells,
+                                    owned_vertices.size(), global_offset_v,
+                                    global_to_local_vertices, ghost_vertices,
+                                    ghost_vertex_owners);
 
       // Unpack received data and add to arrays of ghost indices and ghost
       // owners
@@ -1165,8 +1168,8 @@ mesh::create_topology(MPI_Comm comm,
   const int tdim = topology.dim();
 
   // Create index map for vertices
-  auto index_map_v = std::make_shared<common::IndexMap>(
-      comm, owned_vertices.size(), dest, ghost_vertices, ghost_vertex_owners);
+  auto index_map_v = std::make_shared<common::IndexMapNew>(
+      comm, owned_vertices.size(), ghost_vertices, ghost_vertex_owners);
   auto c0 = std::make_shared<graph::AdjacencyList<std::int32_t>>(
       index_map_v->size_local() + index_map_v->num_ghosts());
 

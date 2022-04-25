@@ -13,6 +13,7 @@
 #include "topologycomputation.h"
 #include "utils.h"
 #include <dolfinx/common/IndexMap.h>
+#include <dolfinx/common/IndexMapNew.h>
 #include <dolfinx/common/utils.h>
 #include <dolfinx/fem/CoordinateElement.h>
 #include <dolfinx/graph/AdjacencyList.h>
@@ -202,6 +203,7 @@ Mesh mesh::create_mesh(MPI_Comm comm,
   return Mesh(comm, std::move(topology), std::move(geometry));
 }
 //-----------------------------------------------------------------------------
+/*
 std::tuple<Mesh, std::vector<std::int32_t>, std::vector<std::int32_t>,
            std::vector<std::int32_t>>
 mesh::create_submesh(const Mesh& mesh, int dim,
@@ -424,6 +426,7 @@ mesh::create_submesh(const Mesh& mesh, int dim,
           std::move(submesh_to_mesh_vertex_map),
           std::move(submesh_to_mesh_x_dof_map)};
 }
+*/
 //-----------------------------------------------------------------------------
 Topology& Mesh::topology() { return _topology; }
 //-----------------------------------------------------------------------------
