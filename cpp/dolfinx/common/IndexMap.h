@@ -221,6 +221,9 @@ public:
   /// ith ghost index.
   std::vector<int> ghost_owners() const;
 
+  /// @note Temporary interface for IndexMap transition
+  const std::vector<int>& owners() const { return _owners; }
+
   /// @todo Aim to remove this function? If it's kept, should it work
   /// with neighborhood ranks?
   ///
@@ -520,6 +523,9 @@ private:
 
   // Local-to-global map for ghost indices
   std::vector<std::int64_t> _ghosts;
+
+  // Ghost owners (on global comm)
+  std::vector<int> _owners;
 
   // List of owned local indices that are in the ghost (halo) region on
   // other ranks, grouped by rank in the neighbor communicator

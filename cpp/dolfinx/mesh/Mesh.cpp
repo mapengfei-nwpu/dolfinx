@@ -214,7 +214,6 @@ Mesh mesh::create_mesh(MPI_Comm comm,
   return Mesh(comm, std::move(topology), std::move(geometry));
 }
 //-----------------------------------------------------------------------------
-/*
 std::tuple<Mesh, std::vector<std::int32_t>, std::vector<std::int32_t>,
            std::vector<std::int32_t>>
 mesh::create_submesh(const Mesh& mesh, int dim,
@@ -228,14 +227,15 @@ mesh::create_submesh(const Mesh& mesh, int dim,
   // Get the vertices in the submesh owned by this process
   auto mesh_vertex_index_map = mesh.topology().index_map(0);
   assert(mesh_vertex_index_map);
+  auto mesh_vertex_index_map_old = common::create_old(*mesh_vertex_index_map);
   std::vector<int32_t> submesh_owned_vertices
       = dolfinx::common::compute_owned_indices(submesh_vertices,
-                                               *mesh_vertex_index_map);
+                                               mesh_vertex_index_map_old);
 
   // Create submesh vertex index map
   std::pair<common::IndexMap, std::vector<int32_t>>
       submesh_vertex_index_map_pair
-      = mesh_vertex_index_map->create_submap(submesh_owned_vertices);
+      = mesh_vertex_index_map_old.create_submap(submesh_owned_vertices);
   auto submesh_vertex_index_map = std::make_shared<common::IndexMap>(
       std::move(submesh_vertex_index_map_pair.first));
 
@@ -276,9 +276,10 @@ mesh::create_submesh(const Mesh& mesh, int dim,
     // TODO Call dolfinx::common::get_owned_indices here? Do we want to
     // support `entities` possibly haveing a ghost on one process that is not
     // in `entities` on the owning process?
+    auto mesh_entity_index_map_old = common::create_old(*mesh_entity_index_map);
     std::pair<common::IndexMap, std::vector<int32_t>>
         submesh_entity_index_map_pair
-        = mesh_entity_index_map->create_submap(submesh_owned_entities);
+        = mesh_entity_index_map_old.create_submap(submesh_owned_entities);
     submesh_entity_index_map = std::make_shared<common::IndexMap>(
         std::move(submesh_entity_index_map_pair.first));
 
@@ -332,8 +333,22 @@ mesh::create_submesh(const Mesh& mesh, int dim,
 
   // Create submesh topology
   Topology submesh_topology(mesh.comm(), entity_type);
-  submesh_topology.set_index_map(0, submesh_vertex_index_map);
-  submesh_topology.set_index_map(dim, submesh_entity_index_map);
+  {
+    submesh_topology.set_index_map(0,
+                                   std::make_shared<common::IndexMapNew>(
+                                       submesh_vertex_index_map->comm(),
+                                       submesh_vertex_index_map->size_local(),
+                                       submesh_vertex_index_map->ghosts(),
+                                       submesh_vertex_index_map->owners()));
+    submesh_topology.set_index_map(dim,
+                                   std::make_shared<common::IndexMapNew>(
+                                       submesh_entity_index_map->comm(),
+                                       submesh_entity_index_map->size_local(),
+                                       submesh_entity_index_map->ghosts(),
+                                       submesh_entity_index_map->owners()));
+  }
+  // submesh_topology.set_index_map(0, submesh_vertex_index_map);
+  // submesh_topology.set_index_map(dim, submesh_entity_index_map);
   submesh_topology.set_connectivity(submesh_v_to_v, 0, 0);
   submesh_topology.set_connectivity(submesh_e_to_v, dim, 0);
 
@@ -437,7 +452,6 @@ mesh::create_submesh(const Mesh& mesh, int dim,
           std::move(submesh_to_mesh_vertex_map),
           std::move(submesh_to_mesh_x_dof_map)};
 }
-*/
 //-----------------------------------------------------------------------------
 Topology& Mesh::topology() { return _topology; }
 //-----------------------------------------------------------------------------

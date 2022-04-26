@@ -10,6 +10,7 @@
 #include "caster_petsc.h"
 #include <complex>
 #include <dolfinx/common/IndexMap.h>
+#include <dolfinx/common/IndexMapNew.h>
 #include <dolfinx/common/Table.h>
 #include <dolfinx/common/Timer.h>
 #include <dolfinx/common/defines.h>
@@ -118,6 +119,63 @@ void common(py::module& m)
            {
              auto [map, ghosts] = self.create_submap(entities);
              return std::pair(std::move(map), as_pyarray(std::move(ghosts)));
+           });
+
+  // dolfinx::common::IndexMapNew
+  py::class_<dolfinx::common::IndexMapNew,
+             std::shared_ptr<dolfinx::common::IndexMapNew>>(m, "IndexMapNew")
+      .def(py::init(
+          [](const MPICommWrapper comm, std::int32_t local_size,
+             const std::vector<std::int64_t>& ghosts,
+             const std::vector<int>& ghost_owners)
+          {
+            return std::make_shared<dolfinx::common::IndexMapNew>(
+                comm.get(), local_size, ghosts, ghost_owners);
+          }))
+      .def_property_readonly("size_local",
+                             &dolfinx::common::IndexMapNew::size_local)
+      .def_property_readonly("size_global",
+                             &dolfinx::common::IndexMapNew::size_global)
+      .def_property_readonly("num_ghosts",
+                             &dolfinx::common::IndexMapNew::num_ghosts)
+      .def_property_readonly("local_range",
+                             &dolfinx::common::IndexMapNew::local_range,
+                             "Range of indices owned by this map")
+      .def_property_readonly(
+          "comm",
+          [](const dolfinx::common::IndexMapNew& self)
+          { return MPICommWrapper(self.comm()); },
+          "Return MPI communicator")
+      .def_property_readonly(
+          "ghost_owners",
+          [](const dolfinx::common::IndexMapNew& self)
+          {
+            const std::vector<int>& owners = self.ghost_owners();
+            return py::array_t<int>(owners.size(), owners.data(),
+                                    py::cast(self));
+          },
+          "Return owning process for each ghost index")
+      .def_property_readonly(
+          "ghosts",
+          [](const dolfinx::common::IndexMapNew& self)
+          {
+            const std::vector<std::int64_t>& ghosts = self.ghosts();
+            return py::array_t<std::int64_t>(ghosts.size(), ghosts.data(),
+                                             py::cast(self));
+          },
+          "Return list of ghost indices")
+      .def("global_indices", &dolfinx::common::IndexMapNew::global_indices)
+      .def("local_to_global",
+           [](const dolfinx::common::IndexMapNew& self,
+              const py::array_t<std::int32_t, py::array::c_style>& local)
+           {
+             if (local.ndim() != 1)
+               throw std::runtime_error("Array of local indices must be 1D.");
+             py::array_t<std::int64_t> global(local.size());
+             self.local_to_global(
+                 local,
+                 xtl::span<std::int64_t>(global.mutable_data(), global.size()));
+             return global;
            });
 
   // dolfinx::common::Timer
