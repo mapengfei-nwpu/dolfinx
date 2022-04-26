@@ -635,26 +635,7 @@ fem::build_dofmap_data(
   {
     ghosts[i] = local_to_global_unowned[perm[i]];
     owners[i] = local_to_global_owner[perm[i]];
-    old_to_new_sorted[i] = old_to_new[num_owned + perm[i]];
   }
-
-  std::copy(old_to_new_sorted.begin(), old_to_new_sorted.end(),
-            old_to_new.begin() + num_owned);
-
-  // for (int i = 0; i < MPI::size(comm); i++)
-  // {
-  //   MPI_Barrier(comm);
-  //   if (i == MPI::rank(comm))
-  //   {
-  //     std::cout << "\nRank " << MPI::rank(comm) << std::endl;
-  //     std::cout << num_owned << " " << old_to_new.size() << std::endl;
-  //     for (auto e : local_to_global_unowned)
-  //       std::cout << e << " ";
-  //     std::cout << std::endl;
-  //     for (auto e : perm)
-  //       std::cout << local_to_global_unowned[e] << " ";
-  //   }
-  // }
 
   // Create IndexMap for dofs range on this process
   std::vector<int> src_ranks = owners;
@@ -674,7 +655,9 @@ fem::build_dofmap_data(
     for (std::int32_t j = 0; j < local_dim0; ++j)
     {
       const std::int32_t old_node = old_nodes[j];
-      const std::int32_t new_node = old_to_new[old_node];
+      std::int32_t new_node = old_to_new[old_node];
+      if (new_node >= num_owned)
+        new_node = perm[new_node - num_owned] + num_owned;
       dofmap[local_dim0 * cell + j] = new_node;
     }
   }
