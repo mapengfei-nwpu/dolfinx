@@ -12,7 +12,7 @@ from dolfinx.mesh import GhostMode, create_unit_square
 from mpi4py import MPI
 
 
-def test_sub_index_map():
+def xtest_sub_index_map():
     comm = MPI.COMM_WORLD
     my_rank = comm.rank
 
@@ -78,7 +78,7 @@ def test_sub_index_map():
     assert np.allclose(submap.ghosts, submap_ghosts)
 
 
-def test_sub_index_map_ghost_mode_none():
+def xtest_sub_index_map_ghost_mode_none():
     n = 2
     mesh = create_unit_square(MPI.COMM_WORLD, n, n, ghost_mode=GhostMode.none)
     tdim = mesh.topology.dim

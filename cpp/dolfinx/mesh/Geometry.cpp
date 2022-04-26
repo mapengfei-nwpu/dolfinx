@@ -52,16 +52,11 @@ mesh::Geometry mesh::create_geometry(
   // TODO: make sure required entities are initialised, or extend
   // fem::build_dofmap_data
 
-  std::cout << "Create geometry 0" << std::endl;
-
   //  Build 'geometry' dofmap on the topology
   auto [_dof_index_map, bs, dofmap] = fem::build_dofmap_data(
       comm, topology, element.create_dof_layout(), reorder_fn);
-  std::cout << "Create geometry 1" << std::endl;
   auto dof_index_map
       = std::make_shared<common::IndexMap>(std::move(_dof_index_map));
-
-  std::cout << "Create geometry 2" << std::endl;
 
   // If the mesh has higher order geometry, permute the dofmap
   if (element.needs_dof_permutations())

@@ -25,12 +25,6 @@ common::IndexMap common::create_old(const IndexMapNew& map)
                           map.ghost_owners());
 }
 //-----------------------------------------------------------------------------
-// std::vector<std::int32_t> common::halo_owned_indices(const IndexMapNew&)
-// {
-//   return std::vector<std::int32_t>();
-// }
-
-//-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 IndexMapNew::IndexMapNew(MPI_Comm comm, std::int32_t local_size)
     : IndexMapNew(comm, local_size, {}, {})
@@ -54,9 +48,9 @@ IndexMapNew::IndexMapNew(MPI_Comm comm, std::int32_t local_size,
               &request_scan);
 
   // Send local size to sum reduction to get global size
-  MPI_Request request;
+  MPI_Request request_reduce;
   MPI_Iallreduce(&local_size_tmp, &_size_global, 1, MPI_INT64_T, MPI_SUM, comm,
-                 &request);
+                 &request_reduce);
 
   // Create communicators with directed edges: (0) owner -> ghost,
 
@@ -65,7 +59,7 @@ IndexMapNew::IndexMapNew(MPI_Comm comm, std::int32_t local_size,
   _local_range = {offset, offset + local_size};
 
   // Wait for the MPI_Iallreduce to complete
-  MPI_Wait(&request, MPI_STATUS_IGNORE);
+  MPI_Wait(&request_reduce, MPI_STATUS_IGNORE);
 }
 //-----------------------------------------------------------------------------
 std::array<std::int64_t, 2> IndexMapNew::local_range() const noexcept
@@ -93,7 +87,7 @@ void IndexMapNew::local_to_global(const xtl::span<const std::int32_t>& local,
   assert(local.size() <= global.size());
   const std::int32_t local_size = _local_range[1] - _local_range[0];
   std::transform(
-      local.cbegin(), local.cend(), global.begin(),
+      local.begin(), local.end(), global.begin(),
       [local_size, local_range = _local_range[0], &ghosts = _ghosts](auto local)
       {
         if (local < local_size)
@@ -118,7 +112,7 @@ void IndexMapNew::global_to_local(const xtl::span<const std::int64_t>& global,
   std::map<std::int64_t, std::int32_t> global_to_local(
       global_local_ghosts.begin(), global_local_ghosts.end());
 
-  std::transform(global.cbegin(), global.cend(), local.begin(),
+  std::transform(global.begin(), global.end(), local.begin(),
                  [range = _local_range,
                   &global_to_local](std::int64_t index) -> std::int32_t
                  {

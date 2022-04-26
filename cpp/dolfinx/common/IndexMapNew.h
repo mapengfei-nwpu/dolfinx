@@ -37,18 +37,17 @@ IndexMap create_old(const IndexMapNew& map);
 class IndexMapNew
 {
 public:
-  /// Create an non-overlapping index map with local_size owned on this
-  /// process.
+  /// @brief Create an non-overlapping index map with local_size owned
+  /// on this process.
   ///
-  /// @note Collective
   /// @param[in] comm The MPI communicator
   /// @param[in] local_size Local size of the IndexMap, i.e. the number
   /// of owned entries
   IndexMapNew(MPI_Comm comm, std::int32_t local_size);
 
-  /// Create an index map with local_size owned indiced on this process
+  /// @brief Create an index map with local_size owned indiced on this
+  /// process.
   ///
-  /// @note Collective
   /// @param[in] comm The MPI communicator
   /// @param[in] local_size Local size of the IndexMap, i.e. the number
   /// of owned entries
@@ -59,33 +58,6 @@ public:
               const xtl::span<const std::int64_t>& ghosts,
               const xtl::span<const int>& src_ranks);
 
-  // private:
-  //   template <typename U, typename V, typename W, typename X>
-  //   IndexMap(std::array<std::int64_t, 2> local_range, std::size_t
-  //   size_global,
-  //            MPI_Comm comm, U&& comm_owner_to_ghost, U&& comm_ghost_to_owner,
-  //            V&& displs_recv_fwd, V&& ghost_pos_recv_fwd, W&& ghosts,
-  //            X&& shared_indices)
-  //       : _local_range(local_range), _size_global(size_global), _comm(comm),
-  //         _comm_owner_to_ghost(std::forward<U>(comm_owner_to_ghost)),
-  //         _comm_ghost_to_owner(std::forward<U>(comm_ghost_to_owner)),
-  //         _displs_recv_fwd(std::forward<V>(displs_recv_fwd)),
-  //         _ghost_pos_recv_fwd(std::forward<V>(ghost_pos_recv_fwd)),
-  //         _ghosts(std::forward<W>(ghosts)),
-  //         _shared_indices(std::forward<X>(shared_indices))
-  //   {
-  //     _sizes_recv_fwd.resize(_displs_recv_fwd.size() - 1, 0);
-  //     std::adjacent_difference(_displs_recv_fwd.cbegin() + 1,
-  //                              _displs_recv_fwd.cend(),
-  //                              _sizes_recv_fwd.begin());
-
-  //     const std::vector<int32_t>& displs_send = _shared_indices->offsets();
-  //     _sizes_send_fwd.resize(_shared_indices->num_nodes(), 0);
-  //     std::adjacent_difference(displs_send.cbegin() + 1, displs_send.cend(),
-  //                              _sizes_send_fwd.begin());
-  //   }
-
-public:
   // Copy constructor
   IndexMapNew(const IndexMapNew& map) = delete;
 
@@ -155,7 +127,7 @@ private:
   // Local-to-global map for ghost indices
   std::vector<std::int64_t> _ghosts;
 
-  // Owning rank
+  // Owning rank for each entry in _ghosts
   std::vector<int> _ghost_owners;
 };
 

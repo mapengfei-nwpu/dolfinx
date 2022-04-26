@@ -77,8 +77,6 @@ Mesh mesh::create_mesh(MPI_Comm comm,
                        mesh::GhostMode ghost_mode,
                        const mesh::CellPartitionFunction& cell_partitioner)
 {
-  std::cout << "Create Mesh 0" << std::endl;
-
   if (ghost_mode == GhostMode::shared_vertex)
     throw std::runtime_error("Ghost mode via vertex currently disabled.");
 
@@ -162,12 +160,8 @@ Mesh mesh::create_mesh(MPI_Comm comm,
                      std::move(cell_nodes)};
   };
 
-  std::cout << "Create Mesh 1" << std::endl;
-
   auto [topology, cell_nodes] = build_topology(comm, element, dof_layout, cells,
                                                ghost_mode, cell_partitioner);
-
-  std::cout << "Create Mesh 2" << std::endl;
 
   // Create connectivity required to compute the Geometry (extra
   // connectivities for higher-order geometries)
@@ -187,8 +181,6 @@ Mesh mesh::create_mesh(MPI_Comm comm,
     }
   }
 
-  std::cout << "Create Mesh 3" << std::endl;
-
   // Function top build geometry. Used to scope memory operations.
   auto build_geometry
       = [](auto comm, auto& cell_nodes, auto& topology, auto& element, auto& x)
@@ -206,11 +198,8 @@ Mesh mesh::create_mesh(MPI_Comm comm,
 
     return create_geometry(comm, topology, element, cell_nodes, x, x.shape(1));
   };
-  std::cout << "Create Mesh 4" << std::endl;
 
   Geometry geometry = build_geometry(comm, cell_nodes, topology, element, x);
-  std::cout << "Create Mesh 5" << std::endl;
-
   return Mesh(comm, std::move(topology), std::move(geometry));
 }
 //-----------------------------------------------------------------------------

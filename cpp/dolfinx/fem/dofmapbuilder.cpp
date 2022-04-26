@@ -432,16 +432,12 @@ std::pair<std::vector<std::int64_t>, std::vector<int>> get_global_indices(
     auto map = topology.index_map(d);
     if (map)
     {
-      std::cout << "Get global indices 0: " << d << std::endl;
       shared_entity[d] = std::vector<std::int8_t>(map->size_local(), false);
       common::IndexMap map_old = common::create_old(*map);
-      std::cout << "Get global indices 1: " << d << std::endl;
       const std::vector<std::int32_t>& forward_indices
           = map_old.scatter_fwd_indices().array();
-      std::cout << "Get global indices 2: " << d << std::endl;
       for (auto entity : forward_indices)
         shared_entity[d][entity] = true;
-      std::cout << "Get global indices 3: " << d << std::endl;
     }
   }
 
@@ -477,15 +473,8 @@ std::pair<std::vector<std::int64_t>, std::vector<int>> get_global_indices(
     auto map = topology.index_map(d);
     if (map)
     {
-      std::cout << "Get global indices 1: " << d << std::endl;
-      oldmaps[d]
-          = std::make_unique<common::IndexMap>(common::create_old(*map));
-
-      // common::IndexMap map_old = common::create_old(*map);
-      std::cout << "Get global indices 2: " << d << std::endl;
-
+      oldmaps[d] = std::make_unique<common::IndexMap>(common::create_old(*map));
       comm[d] = oldmaps[d]->comm(common::IndexMap::Direction::forward);
-      std::cout << "Get global indices 3: " << d << std::endl;
 
       // Get number of neighbors
       int indegree(-1), outdegree(-2), weighted(-1);
@@ -517,8 +506,6 @@ std::pair<std::vector<std::int64_t>, std::vector<int>> get_global_indices(
     }
   }
 
-  std::cout << "Get global indices 4: " << std::endl;
-
   // Build  [local_new - num_owned] -> global old array  broken down by
   // dimension
   std::vector<std::vector<std::int64_t>> local_new_to_global_old(D + 1);
@@ -533,22 +520,15 @@ std::pair<std::vector<std::int64_t>, std::vector<int>> get_global_indices(
     }
   }
 
-  std::cout << "Get global indices 5: " << std::endl;
-
   std::vector<std::int64_t> local_to_global_new(old_to_new.size() - num_owned);
   std::vector<int> local_to_global_new_owner(old_to_new.size() - num_owned);
   for (std::size_t i = 0; i < requests_dim.size(); ++i)
   {
-    std::cout << "Get global indices 5a: " << i << std::endl;
-
     int idx, d;
     MPI_Waitany(requests_dim.size(), requests.data(), &idx, MPI_STATUS_IGNORE);
-    std::cout << "Get global indices 5b: " << i << std::endl;
     d = requests_dim[idx];
-    std::cout << "Get global indices 5c: " << i << std::endl;
 
     auto [neighbors, _] = dolfinx::MPI::neighbors(comm[d]);
-    std::cout << "Get global indices 5d: " << i << std::endl;
 
     // Build (global old, global new) map for dofs of dimension d
     std::vector<std::pair<std::int64_t, std::pair<int64_t, int>>>
@@ -565,8 +545,6 @@ std::pair<std::vector<std::int64_t>, std::vector<int>> get_global_indices(
     }
     std::sort(global_old_new.begin(), global_old_new.end());
 
-    std::cout << "Get global indices 5e: " << i << std::endl;
-
     // Build the dimension d part of local_to_global_new vector
     for (std::size_t i = 0; i < local_new_to_global_old[d].size(); i += 2)
     {
@@ -582,10 +560,7 @@ std::pair<std::vector<std::int64_t>, std::vector<int>> get_global_indices(
       local_to_global_new_owner[local_new_to_global_old[d][i + 1]]
           = it->second.second;
     }
-    std::cout << "Get global indices 5f: " << i << std::endl;
   }
-
-  std::cout << "Get global indices DONE: " << std::endl;
 
   return {std::move(local_to_global_new), std::move(local_to_global_new_owner)};
 }
@@ -608,11 +583,8 @@ fem::build_dofmap_data(
   // a local dofmap, (ii) local-to-global map for dof indices, and (iii)
   // pair {dimension, mesh entity index} giving the mesh entity that dof
   // i is associated with.
-  std::cout << "Build dofmap 0" << std::endl;
   const auto [node_graph0, local_to_global0, dof_entity0]
       = build_basic_dofmap(topology, element_dof_layout);
-
-  std::cout << "Build dofmap 1" << std::endl;
 
   // Compute global dofmap offset
   std::int64_t offset = 0;
@@ -625,20 +597,16 @@ fem::build_dofmap_data(
                 * element_dof_layout.num_entity_dofs(d);
     }
   }
-  std::cout << "Build dofmap 2" << std::endl;
 
   // Build re-ordering map for data locality and get number of owned
   // nodes
   const auto [old_to_new, num_owned]
       = compute_reordering_map(node_graph0, dof_entity0, topology, reorder_fn);
 
-  std::cout << "Build dofmap 3" << std::endl;
-
   // Get global indices for unowned dofs
   const auto [local_to_global_unowned, local_to_global_owner]
       = get_global_indices(topology, num_owned, offset, local_to_global0,
                            old_to_new, dof_entity0);
-  std::cout << "Build dofmap 4" << std::endl;
   assert(local_to_global_unowned.size() == local_to_global_owner.size());
 
   // Create IndexMap for dofs range on this process
