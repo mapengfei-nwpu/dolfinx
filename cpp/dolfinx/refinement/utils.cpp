@@ -364,6 +364,7 @@ refinement::partition(const mesh::Mesh& old_mesh,
                                               std::move(dest_offsets));
   };
 
+  std::cout << "Refine create mesh" << std::endl;
   return mesh::create_mesh(old_mesh.comm(), cell_topology,
                            old_mesh.geometry().cmap(), new_vertex_coordinates,
                            gm, partitioner);

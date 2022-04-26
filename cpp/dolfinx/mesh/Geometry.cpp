@@ -52,11 +52,15 @@ mesh::Geometry mesh::create_geometry(
   // TODO: make sure required entities are initialised, or extend
   // fem::build_dofmap_data
 
+  std::cout << "Create geometry 0" << std::endl;
+
   //  Build 'geometry' dofmap on the topology
   auto [_dof_index_map, bs, dofmap] = fem::build_dofmap_data(
       comm, topology, element.create_dof_layout(), reorder_fn);
   auto dof_index_map
       = std::make_shared<common::IndexMap>(std::move(_dof_index_map));
+
+  std::cout << "Create geometry 1" << std::endl;
 
   // If the mesh has higher order geometry, permute the dofmap
   if (element.needs_dof_permutations())
@@ -70,6 +74,8 @@ mesh::Geometry mesh::create_geometry(
       element.unpermute_dofs(dofmap.links(cell), cell_info[cell]);
   }
 
+  std::cout << "Create geometry 2" << std::endl;
+
   auto remap_data
       = [](auto comm, auto& cell_nodes, auto& x, int dim, auto& dofmap)
   {
@@ -79,30 +85,41 @@ mesh::Geometry mesh::create_geometry(
     dolfinx::radix_sort(xtl::span(indices));
     indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
 
+    std::cout << "remap 0" << std::endl;
     //  Distribute  node coordinates by global index from other ranks.
     //  Order of coords matches order of the indices in 'indices'.
     std::vector<double> coords
-        = MPI::distribute_data<double>(comm, indices, x, dim);
+        = dolfinx::MPI::distribute_data<double>(comm, indices, x, dim);
+
+    std::cout << "remap 1" << std::endl;
 
     // Compute local-to-global map from local indices in dofmap to the
     // corresponding global indices in cell_nodes
     std::vector l2g
         = graph::build::compute_local_to_global_links(cell_nodes, dofmap);
 
+    std::cout << "remap 2" << std::endl;
+
     // Compute local (dof) to local (position in coords) map from (i)
     // local-to-global for dofs and (ii) local-to-global for entries in
     // coords
     std::vector l2l = graph::build::compute_local_to_local(l2g, indices);
+
+    std::cout << "remap 3" << std::endl;
 
     // Allocate space for input global indices and copy data
     std::vector<std::int64_t> igi(indices.size());
     std::transform(l2l.cbegin(), l2l.cend(), igi.begin(),
                    [&indices](auto index) { return indices[index]; });
 
+    std::cout << "remap 4" << std::endl;
+
     return std::tuple(std::move(coords), std::move(l2l), std::move(igi));
   };
 
+  std::cout << "Create geometry 3" << std::endl;
   auto [coords, l2l, igi] = remap_data(comm, cell_nodes, x, dim, dofmap);
+  std::cout << "Create geometry 4" << std::endl;
 
   // Build coordinate dof array, copying coordinates to correct
   // position

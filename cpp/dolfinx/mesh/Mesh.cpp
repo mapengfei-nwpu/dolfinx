@@ -82,6 +82,8 @@ Mesh mesh::create_mesh(MPI_Comm comm,
 
   const fem::ElementDofLayout dof_layout = element.create_dof_layout();
 
+  std::cout << "Create mesh 0" << std::endl;
+
   // Function top build geometry. Used to scope memory operations.
   auto build_topology = [](auto comm, auto& element, auto& dof_layout,
                            auto& cells, auto ghost_mode, auto& cell_partitioner)
@@ -163,6 +165,8 @@ Mesh mesh::create_mesh(MPI_Comm comm,
   auto [topology, cell_nodes] = build_topology(comm, element, dof_layout, cells,
                                                ghost_mode, cell_partitioner);
 
+  std::cout << "Create mesh 1" << std::endl;
+
   // Create connectivity required to compute the Geometry (extra
   // connectivities for higher-order geometries)
   int tdim = topology.dim();
@@ -181,6 +185,8 @@ Mesh mesh::create_mesh(MPI_Comm comm,
     }
   }
 
+  std::cout << "Create mesh 2" << std::endl;
+
   // Function top build geometry. Used to scope memory operations.
   auto build_geometry
       = [](auto comm, auto& cell_nodes, auto& topology, auto& element, auto& x)
@@ -196,10 +202,14 @@ Mesh mesh::create_mesh(MPI_Comm comm,
     if (element.needs_dof_permutations())
       topology.create_entity_permutations();
 
+    std::cout << "Create geometry call" << std::endl;
     return create_geometry(comm, topology, element, cell_nodes, x, x.shape(1));
   };
 
+  std::cout << "Create mesh 3" << std::endl;
+
   Geometry geometry = build_geometry(comm, cell_nodes, topology, element, x);
+  std::cout << "Create mesh 4" << std::endl;
   return Mesh(comm, std::move(topology), std::move(geometry));
 }
 //-----------------------------------------------------------------------------
@@ -433,7 +443,7 @@ mesh::create_submesh(const Mesh& mesh, int dim,
           std::distance(submesh_to_mesh_x_dof_map.begin(), it));
     }
     submesh_x_dofmap_offsets.push_back(submesh_x_dofmap_vec.size());
-  std::cout << "Create submesh 11" << std::endl;
+    std::cout << "Create submesh 11" << std::endl;
   }
   graph::AdjacencyList<std::int32_t> submesh_x_dofmap(
       std::move(submesh_x_dofmap_vec), std::move(submesh_x_dofmap_offsets));

@@ -620,9 +620,10 @@ std::tuple<mesh::Mesh, std::vector<std::int32_t>, std::vector<std::int8_t>>
 plaza::refine(const mesh::Mesh& mesh, bool redistribute,
               RefinementOptions options)
 {
-
+  std::cout << "Plaza 0" << std::endl;
   auto [cell_adj, new_vertex_coordinates, parent_cell, parent_facet]
       = plaza::compute_refinement_data(mesh, options);
+  std::cout << "Plaza 1" << std::endl;
 
   if (dolfinx::MPI::size(mesh.comm()) == 1)
   {
@@ -631,6 +632,7 @@ plaza::refine(const mesh::Mesh& mesh, bool redistribute,
             std::move(parent_cell), std::move(parent_facet)};
   }
 
+  std::cout << "Plaza 2" << std::endl;
   const std::shared_ptr<const common::IndexMapNew> map_c
       = mesh.topology().index_map(mesh.topology().dim());
   const int num_ghost_cells = map_c->num_ghosts();
@@ -640,11 +642,14 @@ plaza::refine(const mesh::Mesh& mesh, bool redistribute,
   MPI_Allreduce(&num_ghost_cells, &max_ghost_cells, 1, MPI_INT, MPI_MAX,
                 mesh.comm());
 
+  std::cout << "Plaza 3" << std::endl;
+
   // Build mesh
   const mesh::GhostMode ghost_mode = max_ghost_cells == 0
                                          ? mesh::GhostMode::none
                                          : mesh::GhostMode::shared_facet;
 
+  std::cout << "Plaza 4" << std::endl;
   return {refinement::partition(mesh, cell_adj, new_vertex_coordinates,
                                 redistribute, ghost_mode),
           std::move(parent_cell), std::move(parent_facet)};

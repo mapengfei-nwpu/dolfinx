@@ -22,13 +22,16 @@ mesh::Mesh refinement::refine(const mesh::Mesh& mesh, bool redistribute)
     throw std::runtime_error("Refinement only defined for simplices");
   }
 
+  std::cout << "refine 0" << std::endl;
   auto [refined_mesh, parent_cell, parent_facet]
       = plaza::refine(mesh, redistribute, plaza::RefinementOptions::none);
+  std::cout << "refine 1" << std::endl;
 
   // Report the number of refined cells
   const int D = mesh.topology().dim();
   const std::int64_t n0 = mesh.topology().index_map(D)->size_global();
   const std::int64_t n1 = refined_mesh.topology().index_map(D)->size_global();
+  std::cout << "refine 2" << std::endl;
   LOG(INFO) << "Number of cells increased from " << n0 << " to " << n1 << " ("
             << 100.0 * (static_cast<double>(n1) / static_cast<double>(n0) - 1.0)
             << "%% increase).";
