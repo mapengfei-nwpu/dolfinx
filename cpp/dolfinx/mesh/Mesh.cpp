@@ -208,10 +208,14 @@ std::tuple<Mesh, std::vector<std::int32_t>, std::vector<std::int32_t>,
 mesh::create_submesh(const Mesh& mesh, int dim,
                      const xtl::span<const std::int32_t>& entities)
 {
+  std::cout << "Create submesh 0" << std::endl;
+
   // Submesh topology
   // Get the verticies in the submesh
   std::vector<std::int32_t> submesh_vertices
       = compute_incident_entities(mesh, entities, dim, 0);
+
+  std::cout << "Create submesh 1" << std::endl;
 
   // Get the vertices in the submesh owned by this process
   auto mesh_vertex_index_map = mesh.topology().index_map(0);
@@ -220,6 +224,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
   std::vector<int32_t> submesh_owned_vertices
       = dolfinx::common::compute_owned_indices(submesh_vertices,
                                                mesh_vertex_index_map_old);
+
+  std::cout << "Create submesh 2" << std::endl;
 
   // Create submesh vertex index map
   std::pair<common::IndexMap, std::vector<int32_t>>
@@ -242,6 +248,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
                      std::int32_t vertex_index)
                  { return size_local + vertex_index; });
 
+  std::cout << "Create submesh 3" << std::endl;
+
   // Get the entities in the submesh that are owned by this process
   auto mesh_entity_index_map = mesh.topology().index_map(dim);
   assert(mesh_entity_index_map);
@@ -260,8 +268,11 @@ mesh::create_submesh(const Mesh& mesh, int dim,
   // dimension, add ghost entities to the submesh. If not, do not add ghost
   // entities, because in general, not all expected ghost entities would be
   // present.
+  std::cout << "Create submesh 4" << std::endl;
   if (mesh.topology().dim() == dim)
   {
+    std::cout << "Create submesh 4a" << std::endl;
+
     // TODO Call dolfinx::common::get_owned_indices here? Do we want to
     // support `entities` possibly haveing a ghost on one process that is not
     // in `entities` on the owning process?
@@ -271,6 +282,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
         = mesh_entity_index_map_old.create_submap(submesh_owned_entities);
     submesh_entity_index_map = std::make_shared<common::IndexMap>(
         std::move(submesh_entity_index_map_pair.first));
+
+    std::cout << "Create submesh 4b" << std::endl;
 
     // Add ghost entities to the entity map
     submesh_to_mesh_entity_map.reserve(
@@ -285,10 +298,12 @@ mesh::create_submesh(const Mesh& mesh, int dim,
   }
   else
   {
+    std::cout << "Create submesh 4c" << std::endl;
     submesh_entity_index_map = std::make_shared<common::IndexMap>(
         mesh.comm(), submesh_owned_entities.size());
   }
 
+  std::cout << "Create submesh 5" << std::endl;
   // Submesh vertex to vertex connectivity (identity)
   auto submesh_v_to_v = std::make_shared<graph::AdjacencyList<std::int32_t>>(
       submesh_vertex_index_map->size_local()
@@ -320,6 +335,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
   auto submesh_e_to_v = std::make_shared<graph::AdjacencyList<std::int32_t>>(
       std::move(submesh_e_to_v_vec), std::move(submesh_e_to_v_offsets));
 
+  std::cout << "Create submesh 6" << std::endl;
+
   // Create submesh topology
   Topology submesh_topology(mesh.comm(), entity_type);
   {
@@ -341,6 +358,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
   submesh_topology.set_connectivity(submesh_v_to_v, 0, 0);
   submesh_topology.set_connectivity(submesh_e_to_v, dim, 0);
 
+  std::cout << "Create submesh 7" << std::endl;
+
   // Submesh geometry
   // Get the geometry dofs in the submesh based on the entities in
   // submesh
@@ -354,6 +373,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
   auto mesh_geometry_dof_index_map = mesh.geometry().index_map();
   assert(mesh_geometry_dof_index_map);
 
+  std::cout << "Create submesh 8" << std::endl;
+
   // Get the geometry dofs in the submesh owned by this process
   auto submesh_owned_x_dofs = dolfinx::common::compute_owned_indices(
       submesh_x_dofs, *mesh_geometry_dof_index_map);
@@ -363,6 +384,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
       = mesh_geometry_dof_index_map->create_submap(submesh_owned_x_dofs);
   auto submesh_x_dof_index_map = std::make_shared<common::IndexMap>(
       std::move(submesh_x_dof_index_map_pair.first));
+
+  std::cout << "Create submesh 9" << std::endl;
 
   // Create a map from the (local) geometry dofs in the submesh to the (local)
   // geometry dofs in the mesh.
@@ -376,6 +399,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
                  [size_local = mesh_geometry_dof_index_map->size_local()](
                      std::int32_t x_dof_index)
                  { return size_local + x_dof_index; });
+
+  std::cout << "Create submesh 10" << std::endl;
 
   // Create submesh geometry coordinates
   xtl::span<const double> mesh_x = mesh.geometry().x();
@@ -408,6 +433,7 @@ mesh::create_submesh(const Mesh& mesh, int dim,
           std::distance(submesh_to_mesh_x_dof_map.begin(), it));
     }
     submesh_x_dofmap_offsets.push_back(submesh_x_dofmap_vec.size());
+  std::cout << "Create submesh 11" << std::endl;
   }
   graph::AdjacencyList<std::int32_t> submesh_x_dofmap(
       std::move(submesh_x_dofmap_vec), std::move(submesh_x_dofmap_offsets));
@@ -417,6 +443,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
       = cell_entity_type(mesh.geometry().cmap().cell_shape(), dim, 0);
   auto submesh_coord_ele = fem::CoordinateElement(
       submesh_coord_cell, mesh.geometry().cmap().degree());
+
+  std::cout << "Create submesh 12" << std::endl;
 
   // Submesh geometry input_global_indices
   // TODO Check this
@@ -434,6 +462,8 @@ mesh::create_submesh(const Mesh& mesh, int dim,
   Geometry submesh_geometry(
       submesh_x_dof_index_map, std::move(submesh_x_dofmap), submesh_coord_ele,
       std::move(submesh_x), mesh.geometry().dim(), std::move(submesh_igi));
+
+  std::cout << "Create submesh 13" << std::endl;
 
   return {Mesh(mesh.comm(), std::move(submesh_topology),
                std::move(submesh_geometry)),

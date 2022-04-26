@@ -724,8 +724,9 @@ std::vector<std::int8_t> mesh::compute_boundary_facets(const Topology& topology)
   // submesh could have no ghost cells and no shared facets, but could share
   // some cells with other processes.
   std::vector<std::int32_t> fwd_shared_facets;
+  common::IndexMap cell_map_old = common::create_old(*cell_map);
   if (cell_map->num_ghosts() == 0
-      and common::create_old(*cell_map).scatter_fwd_indices().array().empty())
+      and cell_map_old.scatter_fwd_indices().array().empty())
   {
     auto facet_map_old = common::create_old(*facet_map);
 
@@ -790,8 +791,10 @@ std::int32_t Topology::create_entities(int dim)
     return -1;
 
   // Create local entities
+  std::cout << "Compute ents" << std::endl;
   const auto [cell_entity, entity_vertex, index_map]
       = compute_entities(_comm.comm(), *this, dim);
+  std::cout << "Post Compute ents" << std::endl;
 
   if (cell_entity)
     set_connectivity(cell_entity, this->dim(), dim);

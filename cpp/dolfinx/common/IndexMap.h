@@ -121,6 +121,14 @@ private:
     _sizes_send_fwd.resize(_shared_indices->num_nodes(), 0);
     std::adjacent_difference(displs_send.cbegin() + 1, displs_send.cend(),
                              _sizes_send_fwd.begin());
+
+    {
+      std::vector<int> neighbors = dolfinx::MPI::neighbors(
+          this->comm(common::IndexMap::Direction::forward))[0];
+      _owners = this->ghost_owners();
+      std::transform(_owners.begin(), _owners.end(), _owners.begin(),
+                     [&neighbors](auto r) { return neighbors[r]; });
+    }
   }
 
 public:

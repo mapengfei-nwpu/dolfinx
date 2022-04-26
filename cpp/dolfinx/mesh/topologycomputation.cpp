@@ -124,19 +124,26 @@ get_local_indexing(MPI_Comm comm, const common::IndexMapNew& cell_indexmap,
 
   //---------
   // Create an expanded neighbor_comm from shared_vertices
+  std::cout << "Get local indexing 0" << std::endl;
   common::IndexMap vertex_indexmap_old = common::create_old(vertex_indexmap);
+  std::cout << "Get local indexing 1" << std::endl;
   const std::map<std::int32_t, std::set<std::int32_t>> shared_vertices
       = vertex_indexmap_old.compute_shared_indices();
+  std::cout << "Get local indexing 2" << std::endl;
 
   std::set<std::int32_t> neighbor_set;
   for (auto& q : shared_vertices)
     neighbor_set.insert(q.second.begin(), q.second.end());
+  std::cout << "Get local indexing 3" << std::endl;
   std::vector<std::int32_t> neighbors(neighbor_set.begin(), neighbor_set.end());
+  std::cout << "Get local indexing 4: " << neighbors.size() << std::endl;
   MPI_Comm neighbor_comm;
   MPI_Dist_graph_create_adjacent(comm, neighbors.size(), neighbors.data(),
                                  MPI_UNWEIGHTED, neighbors.size(),
                                  neighbors.data(), MPI_UNWEIGHTED,
                                  MPI_INFO_NULL, false, &neighbor_comm);
+  std::cout << "Get local indexing 5" << std::endl;
+
 
   const int neighbor_size = neighbors.size();
   std::unordered_map<int, int> proc_to_neighbor;
@@ -387,6 +394,8 @@ compute_entities_by_key_matching(
         "Cannot create vertices for topology. Should already exist.");
   }
 
+  std::cout << "Key match 0" << std::endl;
+
   // Start timer
   common::Timer timer("Compute entities of dim = " + std::to_string(dim));
 
@@ -402,8 +411,12 @@ compute_entities_by_key_matching(
                    num_cell_vertices(cell_entity_type(cell_type, dim, i)));
   }
 
+  std::cout << "Key match 1" << std::endl;
+
   // Create map from cell vertices to entity vertices
   auto e_vertices = get_entity_vertices(cell_type, dim);
+
+  std::cout << "Key match 2" << std::endl;
 
   // List of vertices for each entity in each cell
   const std::size_t num_cells = cells.num_nodes();
@@ -411,6 +424,7 @@ compute_entities_by_key_matching(
   const std::size_t entity_list_shape1 = max_vertices_per_entity;
   std::vector<std::int32_t> entity_list(entity_list_shape0 * entity_list_shape1,
                                         -1);
+  std::cout << "Key match 3" << std::endl;
   for (std::size_t c = 0; c < num_cells; ++c)
   {
     // Get vertices from cell
@@ -427,6 +441,9 @@ compute_entities_by_key_matching(
         entity_list[idx * entity_list_shape1 + j] = vertices[ev[j]];
     }
   }
+
+
+  std::cout << "Key match 3" << std::endl;
 
   std::vector<std::int32_t> entity_index(entity_list_shape0, -1);
   std::int32_t entity_count = 0;
@@ -474,6 +491,9 @@ compute_entities_by_key_matching(
     }
   }
 
+  std::cout << "Key match 4" << std::endl;
+
+
   // Communicate with other processes to find out which entities are
   // ghosted and shared. Remap the numbering so that ghosts are at the
   // end.
@@ -481,6 +501,7 @@ compute_entities_by_key_matching(
       comm, cell_index_map, vertex_index_map, entity_list,
       max_vertices_per_entity, num_entities_per_cell, entity_index);
 
+  std::cout << "Key match 5" << std::endl;
   // Entity-vertex connectivity
   std::vector<std::int32_t> offsets_ev(entity_count + 1, 0);
   std::vector<int> size_ev(entity_count);
@@ -509,12 +530,16 @@ compute_entities_by_key_matching(
   // NOTE: Cell-entity connectivity comes after ev creation because
   // below we use std::move(local_index)
 
+  std::cout << "Key match 6" << std::endl;
+
   // Cell-entity connectivity
   std::vector<std::int32_t> offsets_ce(num_cells + 1, 0);
   std::transform(offsets_ce.cbegin(), std::prev(offsets_ce.cend()),
                  std::next(offsets_ce.begin()),
                  [num_entities_per_cell](auto x)
                  { return x + num_entities_per_cell; });
+
+  std::cout << "Key match 7" << std::endl;
   graph::AdjacencyList<std::int32_t> ce(std::move(local_index),
                                         std::move(offsets_ce));
 
@@ -659,8 +684,10 @@ mesh::compute_entities(MPI_Comm comm, const Topology& topology, int dim)
   assert(vertex_map);
   auto cell_map = topology.index_map(tdim);
   assert(cell_map);
+  std::cout << "Key matching" << std::endl;
   auto [d0, d1, d2] = compute_entities_by_key_matching(
       comm, *cells, *vertex_map, *cell_map, topology.cell_type(), dim);
+  std::cout << "Post matching" << std::endl;
 
   return {std::make_shared<graph::AdjacencyList<std::int32_t>>(std::move(d0)),
           std::make_shared<graph::AdjacencyList<std::int32_t>>(std::move(d1)),

@@ -17,12 +17,16 @@ using namespace dolfinx::common;
 //-----------------------------------------------------------------------------
 common::IndexMap common::create_old(const IndexMapNew& map)
 {
-  std::vector<int> dest(map.ghost_owners().begin(), map.ghost_owners().end());
-  std::sort(dest.begin(), dest.end());
-  dest.erase(std::unique(dest.begin(), dest.end()), dest.end());
+  std::vector<int> src_ranks(map.ghost_owners().begin(),
+                             map.ghost_owners().end());
+  std::sort(src_ranks.begin(), src_ranks.end());
+  src_ranks.erase(std::unique(src_ranks.begin(), src_ranks.end()),
+                  src_ranks.end());
+  auto dest_ranks
+      = dolfinx::MPI::compute_graph_edges_nbx(map.comm(), src_ranks);
 
-  return common::IndexMap(map.comm(), map.size_local(), dest, map.ghosts(),
-                          map.ghost_owners());
+  return common::IndexMap(map.comm(), map.size_local(), dest_ranks,
+                          map.ghosts(), map.ghost_owners());
 }
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
