@@ -34,13 +34,13 @@ inline void insert_local_to_global(xtl::span<const std::int32_t> dofs,
 {
   if constexpr (_bs > 0)
   {
-    for (int i = 0; i < dofs.size(); ++i)
+    for (std::size_t i = 0; i < dofs.size(); ++i)
       for (int k = 0; k < _bs; ++k)
         b[_bs * dofs[i] + k] += be[_bs * i + +k];
   }
   else
   {
-    for (int i = 0; i < dofs.size(); ++i)
+    for (std::size_t i = 0; i < dofs.size(); ++i)
       for (int k = 0; k < bs; ++k)
         b[bs * dofs[i] + k] += be[bs * i + k];
   }
@@ -490,15 +490,12 @@ void _lift_bc_interior_facets(
         }
       }
     }
+    const xtl::span<T> _be(be);
+    const xtl::span<T> sub_be
+        = _be.subspan(bs * dmap0_cell0.size(), bs * dmap1.size());
 
-    for (std::size_t i = 0; i < dmap0_cell0.size(); ++i)
-      for (int k = 0; k < bs0; ++k)
-        b[bs0 * dmap0_cell0[i] + k] += be[bs0 * i + k];
-
-    const int offset_be = bs0 * dmap0_cell0.size();
-    for (std::size_t i = 0; i < dmap0_cell1.size(); ++i)
-      for (int k = 0; k < bs0; ++k)
-        b[bs0 * dmap0_cell1[i] + k] += be[offset_be + bs0 * i + k];
+    insert_local_to_global<T, _bs>(dmap0_cell0, _be, b, bs);
+    insert_local_to_global<T, _bs>(dmap1, sub_be, b, bs);
   }
 }
 /// Execute kernel over cells and accumulate result in vector
@@ -558,7 +555,6 @@ void assemble_cells(
 
     // Scatter cell vector to 'global' vector array
     auto dofs = dofmap.links(c);
-
     insert_local_to_global<T, _bs>(dofs, be, b, bs);
   }
 }
@@ -621,7 +617,6 @@ void assemble_exterior_facets(
 
     // Add element vector to global vector
     auto dofs = dofmap.links(cell);
-
     insert_local_to_global<T, _bs>(dofs, _be, b, bs);
   }
 }
