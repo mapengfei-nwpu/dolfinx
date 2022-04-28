@@ -24,6 +24,29 @@
 #include <xtensor/xbuilder.hpp>
 #include <xtensor/xtensor.hpp>
 
+namespace
+{
+
+template <typename T, int _bs>
+inline void insert_local_to_global(xtl::span<const std::int32_t> dofs,
+                                   const xtl::span<T>& be, xtl::span<T> b,
+                                   int bs)
+{
+  if constexpr (_bs > 0)
+  {
+    for (int i = 0; i < dofs.size(); ++i)
+      for (int k = 0; k < _bs; ++k)
+        b[_bs * dofs[i] + k] += be[_bs * i + +k];
+  }
+  else
+  {
+    for (int i = 0; i < dofs.size(); ++i)
+      for (int k = 0; k < bs; ++k)
+        b[bs * dofs[i] + k] += be[bs * i + k];
+  }
+}
+} // namespace
+
 namespace dolfinx::fem::impl
 {
 
@@ -172,19 +195,7 @@ void _lift_bc_cells(
       }
     }
 
-    for (std::size_t i = 0; i < dmap0.size(); ++i)
-    {
-      if constexpr (_bs0 > 0)
-      {
-        for (int k = 0; k < _bs0; ++k)
-          b[_bs0 * dmap0[i] + k] += be[_bs0 * i + k];
-      }
-      else
-      {
-        for (int k = 0; k < bs0; ++k)
-          b[bs0 * dmap0[i] + k] += be[bs0 * i + k];
-      }
-    }
+    insert_local_to_global<T, _bs0>(dmap0, be, b, bs0);
   }
 }
 
@@ -293,10 +304,7 @@ void _lift_bc_exterior_facets(
         }
       }
     }
-
-    for (std::size_t i = 0; i < dmap0.size(); ++i)
-      for (int k = 0; k < bs0; ++k)
-        b[bs0 * dmap0[i] + k] += be[bs0 * i + k];
+    insert_local_to_global<T, _bs>(dmap0, be, b, bs);
   }
 }
 
@@ -550,18 +558,8 @@ void assemble_cells(
 
     // Scatter cell vector to 'global' vector array
     auto dofs = dofmap.links(c);
-    if constexpr (_bs > 0)
-    {
-      for (int i = 0; i < num_dofs; ++i)
-        for (int k = 0; k < _bs; ++k)
-          b[_bs * dofs[i] + k] += be[_bs * i + k];
-    }
-    else
-    {
-      for (int i = 0; i < num_dofs; ++i)
-        for (int k = 0; k < bs; ++k)
-          b[bs * dofs[i] + k] += be[bs * i + k];
-    }
+
+    insert_local_to_global<T, _bs>(dofs, be, b, bs);
   }
 }
 
@@ -623,18 +621,8 @@ void assemble_exterior_facets(
 
     // Add element vector to global vector
     auto dofs = dofmap.links(cell);
-    if constexpr (_bs > 0)
-    {
-      for (int i = 0; i < num_dofs; ++i)
-        for (int k = 0; k < _bs; ++k)
-          b[_bs * dofs[i] + k] += be[_bs * i + k];
-    }
-    else
-    {
-      for (int i = 0; i < num_dofs; ++i)
-        for (int k = 0; k < bs; ++k)
-          b[bs * dofs[i] + k] += be[bs * i + k];
-    }
+
+    insert_local_to_global<T, _bs>(dofs, _be, b, bs);
   }
 }
 
@@ -718,25 +706,8 @@ void assemble_interior_facets(
     dof_transform(be, cell_info, cells[0], 1);
     dof_transform(sub_be, cell_info, cells[1], 1);
 
-    // Add element vector to global vector
-    if constexpr (_bs > 0)
-    {
-      for (std::size_t i = 0; i < dmap0.size(); ++i)
-        for (int k = 0; k < _bs; ++k)
-          b[_bs * dmap0[i] + k] += be[_bs * i + k];
-      for (std::size_t i = 0; i < dmap1.size(); ++i)
-        for (int k = 0; k < _bs; ++k)
-          b[_bs * dmap1[i] + k] += be[_bs * (i + dmap0.size()) + k];
-    }
-    else
-    {
-      for (std::size_t i = 0; i < dmap0.size(); ++i)
-        for (int k = 0; k < bs; ++k)
-          b[bs * dmap0[i] + k] += be[bs * i + k];
-      for (std::size_t i = 0; i < dmap1.size(); ++i)
-        for (int k = 0; k < bs; ++k)
-          b[bs * dmap1[i] + k] += be[bs * (i + dmap0.size()) + k];
-    }
+    insert_local_to_global<T, _bs>(dmap0, _be, b, bs);
+    insert_local_to_global<T, _bs>(dmap1, sub_be, b, bs);
   }
 }
 
