@@ -28,6 +28,10 @@ add_custom_command(
 add_executable(${PROJECT_NAME} main.cpp ${CMAKE_CURRENT_BINARY_DIR}/poisson.c)
 target_link_libraries(${PROJECT_NAME} dolfinx)
 
+# use MPI
+find_package(MPI REQUIRED)
+target_link_libraries(${PROJECT_NAME} ${MPI_LIBRARIES})
+
 # Do not throw error for 'multi-line comments' (these are typical in
 # rst which includes LaTeX)
 include(CheckCXXCompilerFlag)
